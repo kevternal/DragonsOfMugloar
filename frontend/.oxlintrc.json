@@ -5,6 +5,12 @@
     "browser": true
   },
   "categories": {
-    "correctness": "error"
+    "correctness": "error",
+    "pedantic": "warn",
+    "style": "warn"
+  },
+  "rules": {
+    "unicorn/filename-case": ["warn", { "cases": { "kebabCase": true, "pascalCase": true } }],
+    "vitest/consistent-test-filename": ["warn", { "pattern": ".*\\.spec\\.[tj]sx?$" }]
   }
 }
