@@ -11,6 +11,9 @@
   },
   "rules": {
     "unicorn/filename-case": ["warn", { "cases": { "kebabCase": true, "pascalCase": true } }],
-    "vitest/consistent-test-filename": ["warn", { "pattern": ".*\\.spec\\.[tj]sx?$" }]
+    "vitest/consistent-test-filename": ["warn", { "pattern": ".*\\.spec\\.[tj]sx?$" }],
+    "vitest/no-importing-vitest-globals": "off",
+    "vitest/prefer-describe-function-title": "off",
+    "eslint/capitalized-comments": "off"
   }
 }
