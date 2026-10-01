@@ -40,3 +40,6 @@ __screenshots__/
 
 # Claude Code (personal settings)
 .claude/settings.local.json
+
+# BMad (generated render cache)
+_bmad/render/
