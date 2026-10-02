@@ -5,7 +5,7 @@ import { useGameStore } from '@/stores/game'
 
 defineProps<{ active: boolean }>()
 
-const store = useGameStore()
+const game = useGameStore()
 </script>
 
 <template>
@@ -13,22 +13,22 @@ const store = useGameStore()
         <component :is="active ? 'h1' : 'h2'" id="shop-heading" :tabindex="active ? -1 : undefined">
             {{ copy.shop.heading }}
         </component>
-        <div v-if="store.shopFailed" class="notice">
+        <div v-if="game.shopFailed" class="notice">
             <p>{{ copy.shop.failed }}</p>
-            <button type="button" :disabled="store.pending" @click="store.refreshShop()">
+            <button type="button" :disabled="game.pending" @click="game.refreshShop()">
                 {{ copy.shop.retry }}
             </button>
         </div>
-        <p v-else-if="store.shop.length === 0 && store.status === 'playing'">
+        <p v-else-if="game.shop.length === 0 && game.status === 'playing'">
             {{ copy.shop.empty }}
         </p>
         <ul class="list">
-            <li v-for="item in store.shop" :key="item.id">
+            <li v-for="item in game.shop" :key="item.id">
                 <ShopItem
                     :item="item"
-                    :gold="store.stats.gold"
-                    :disabled="store.pending"
-                    @buy="store.buy($event)"
+                    :gold="game.stats.gold"
+                    :disabled="game.pending"
+                    @buy="game.buy($event)"
                 />
             </li>
         </ul>

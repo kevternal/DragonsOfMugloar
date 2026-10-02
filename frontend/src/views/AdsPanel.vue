@@ -6,7 +6,7 @@ import { useGameStore } from '@/stores/game'
 
 defineProps<{ active: boolean }>()
 
-const store = useGameStore()
+const game = useGameStore()
 </script>
 
 <template>
@@ -15,19 +15,19 @@ const store = useGameStore()
             {{ copy.ads.heading }}
         </component>
         <BoardNotice
-            v-if="store.boardStale"
-            :refreshing="store.pending"
-            @retry="store.refreshMessages()"
+            v-if="game.boardStale"
+            :refreshing="game.pending"
+            @retry="game.refreshMessages()"
         />
-        <p v-if="store.board.length === 0 && !store.boardStale && store.status === 'playing'">
+        <p v-if="game.board.length === 0 && !game.boardStale && game.status === 'playing'">
             {{ copy.ads.empty }}
         </p>
         <ul class="list">
-            <li v-for="ad in store.board" :key="ad.adId">
+            <li v-for="ad in game.board" :key="ad.adId">
                 <AdCard
                     :ad="ad"
-                    :disabled="store.pending || store.boardStale"
-                    @solve="store.solve($event)"
+                    :disabled="game.pending || game.boardStale"
+                    @solve="game.solve($event)"
                 />
             </li>
         </ul>

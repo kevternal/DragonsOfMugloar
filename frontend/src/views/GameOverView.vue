@@ -3,23 +3,23 @@ import { useRoute, useRouter } from 'vue-router'
 import { copy, errorMessage } from '@/copy'
 import { useGameStore } from '@/stores/game'
 
-const store = useGameStore()
+const game = useGameStore()
 const route = useRoute()
 const router = useRouter()
 
-// AD-10: /over renders from the store. If the store doesn't hold this game as over
+// AD-10: /over renders from the game. If the store doesn't hold this game as over
 // (for example after a reload), go back to the start screen.
-const holdsGame = store.status === 'over' && store.gameId === route.params.gameId
+const holdsGame = game.status === 'over' && game.gameId === route.params.gameId
 if (!holdsGame) void router.replace({ name: 'start' })
 
 // Snapshot, so "Play again" resetting the store doesn't blank the screen.
-const finalScore = store.stats.score
-const finalTurn = store.stats.turn
+const finalScore = game.stats.score
+const finalTurn = game.stats.turn
 
 async function playAgain(): Promise<void> {
-    await store.start()
-    if (store.status === 'playing' && store.gameId) {
-        await router.push({ name: 'ads', params: { gameId: store.gameId } })
+    await game.start()
+    if (game.status === 'playing' && game.gameId) {
+        await router.push({ name: 'ads', params: { gameId: game.gameId } })
     }
 }
 </script>
@@ -38,9 +38,9 @@ async function playAgain(): Promise<void> {
                 <dd>{{ finalTurn ?? copy.stats.unknown }}</dd>
             </div>
         </dl>
-        <p v-if="store.error" role="alert" class="error">{{ errorMessage(store.error) }}</p>
-        <button type="button" :disabled="store.pending" @click="playAgain">
-            {{ store.pending ? copy.over.starting : copy.over.playAgain }}
+        <p v-if="game.error" role="alert" class="error">{{ errorMessage(game.error) }}</p>
+        <button type="button" :disabled="game.pending" @click="playAgain">
+            {{ game.pending ? copy.over.starting : copy.over.playAgain }}
         </button>
     </section>
 </template>
