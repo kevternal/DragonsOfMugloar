@@ -1,0 +1,50 @@
+/* The only breakpoint (AD-14) is 768px at a 16px root. Only this file has @media. */
+
+.page,
+.game {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: var(--space-3);
+}
+
+.site-footer {
+    padding: var(--space-3);
+    color: var(--color-muted);
+    font-size: var(--font-size-s);
+    text-align: center;
+}
+
+.game {
+    display: grid;
+    gap: var(--space-3);
+}
+
+.game-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+}
+
+.panels {
+    display: grid;
+    gap: var(--space-4);
+}
+
+.panel--inactive {
+    display: none;
+}
+
+@media (min-width: 48rem /* 768px */) {
+    .panels {
+        grid-template-columns: 3fr 2fr;
+        align-items: start;
+    }
+
+    .panel--inactive {
+        display: block;
+    }
+
+    .game-nav {
+        display: none;
+    }
+}

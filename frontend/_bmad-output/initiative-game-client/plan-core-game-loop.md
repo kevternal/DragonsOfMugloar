@@ -3,7 +3,8 @@ title: 'Core game loop: start, board, solve, shop, reputation, last turn, game o
 type: 'feature'
 ticket: ''
 created: '2026-10-01'
-status: 'ready-for-dev'
+status: 'done'
+baseline_revision: 'e611590fc10016ce3e17b4a8f3c8a2ed960ec404'
 route: 'full'
 route_source: 'auto'
 review: ''
@@ -140,3 +141,36 @@ async function runTurn(call: () => Promise<TurnResponse>, describe: (r) => LastT
 
 **Manual checks:**
 - `pnpm dev`: play one game to game over; check the 360 and 1440 px layouts; navigate the full loop with the keyboard only. This plays the live API: about 2 requests per turn.
+
+## Code Review
+
+### 2026-10-02
+Code review complete. 1 `decision-needed`, 5 `patch`, 0 `defer`, 18 rejected. Lenses: blind-hunter, edge-case-hunter, verification-gap, intent-alignment (no failures).
+
+- [x] [Review][Decision] (resolved: option a, shop-failed notice and retry button) A failed shop fetch leaves the shop empty with no retry — `loadShopAndBoard` only sets the global `error`, and `ShopPanel` then shows "The shelves are empty". The board has a notice and retry button; the shop has neither. Options: (a) add a shop-failed state, notice and "Check the shop again" button (new surface, new copy); (b) show only the error banner and hide the "empty" text when the fetch failed; (c) accept as is, since the plan fetches the shop once. [src/stores/game.ts:1554, src/views/ShopPanel.vue:2131] (blind-hunter+edge-case-hunter, medium)
+- [x] [Review][Patch] No test observes view and router behaviour. The I/O matrix rows "Game over" (route becomes `/game/<id>/over`, Play again) and "Expired game" (route `/` with the notice) have no covering test; nor do the `/game/:id` redirect, a fresh `/over` URL redirecting with no fetch, Start navigating to `/ads`, or focus moving to the `<h1>` after navigation. Add `src/views/__tests__/game-flow.spec.ts` with a real router and stubbed fetch, plus a focus test in `App.spec.ts`. [src/views/GameView.vue:53, src/views/GameOverView.vue:1961, src/App.vue:6] (verification-gap+intent-alignment+blind-hunter, medium)
+- [x] [Review][Patch] Client error paths and two components lack assertions. A rejected `fetch` (must give `{ kind: 'network', status: null }`) and a 200 with an unparseable body (kind `http`) are untested. `ReputationPanel` and the `buy`, `reputation`, none and no-changes branches of `LastTurn` have no test. [src/api/client.ts:186, src/components/ReputationPanel.vue, src/components/LastTurn.vue] (verification-gap, low)
+- [ ] [Review][Patch] (ON HOLD by user: no non-UTF-8 example observed) `TextDecoder` is non-fatal, so a non-UTF-8 base64 payload silently becomes U+FFFD and the ad stays "solvable" but the solve call fails. Use `{ fatal: true }` so it takes the existing unsolvable-with-warning path; this also surfaces the [U] open question in AD-3. [src/game/decode.ts:1000] (edge-case-hunter, low)
+- [x] [Review][Patch] ESLint AD-1 boundaries have gaps: `game/` bans `@/stores|views|components|router` but has no relative-path forms; `components/` does not ban `views/` or `router/`. A relative import of `../stores/game` in `game/` passes lint. Add the missing patterns. [eslint.config.ts:50] (edge-case-hunter+blind-hunter, low)
+- [x] [Review][Patch] Copy cleanup: `lastTurn.bought_ok` and `bought_fail` are snake_case (rest are camelCase), and `copy.ads.staleDisabled` is never used. [src/copy.ts:776] (blind-hunter, low)
+
+#### Rejected
+- Same-id stale `refreshBoard` writes into a replaced session (blind, edge) — low: needs `load g1` → `load g2` → `load g1` within one retry window; the fix (epoch checks in two more functions) adds complexity.
+- `applyTurn` accepts null or non-number fields (edge) — low: the live API returns numbers [V 2026-10-01] and the DTO types say so; the guard adds a branch for an unshown case.
+- Non-object turn body or non-array messages gives a "network" label (edge, blind) — low: no evidence the live API sends these; fix adds validation code.
+- Finished game reloaded at `/ads` looks playable (blind) — false: `GET messages` on a finished game returns 404 [V], so `load` sets `expired`. Reload at `/over` redirecting to start is AD-10 as written.
+- `load()` does not clear `expiredNotice` (edge) — false: AD-6 says only `start()` clears it, and the store resets on any full page load, so no in-app path shows a stale notice.
+- Duplicate decoded adIds as Vue keys (edge) — low: not seen in any probe, and the fix is more than a direct correction.
+- `itemEffect` with prototype keys like `constructor` (edge) — false: the lookup returns a function, `effect?.level` is undefined, and nothing visible changes.
+- No request timeout, so a hung request holds `pending` (blind) — low: browsers time out network hangs on their own, and an abort path is new surface.
+- `itemEffect` warns on every recompute (blind) — low: dev-only, `computed` caches, and every observed item id is in the registry.
+- `aria-live` wraps the "Last turn" heading too (blind) — low: matches the plan's always-rendered live region; no named harm.
+- Focus moves on ads/shop tab switch (blind) — false: AD-15 says focus moves to the new `<h1>` on route change.
+- `h1`/`h2` swap by `active` (blind) — false: AD-15 gives each panel the `<h1>`, and exactly one `<h1>` exists per screen.
+- Duplicated CSS and `.error` blocks (blind) — low: AD conventions require scoped styles per SFC; hoisting is a larger refactor with no named harm.
+- `highScore` dropped (blind) — false: the spec says the API's `highScore` is not used.
+- `@vue/devtools-api` unused and in `dependencies` (blind, intent) — false: the plan requires it as Pinia 4's peer.
+- Missing [V]/[D]/[U] tags in tests and copy (blind) — false: the new API-behaviour comments in `client.ts`, `shop.ts`, `decode.ts` carry tags; tests and copy make no API claims.
+- `App.spec.ts` uses the shared router singleton (blind) — low: one test today; the new view tests can build their own router.
+- `runTurn` leaves `lastTurn` after expiry, and reputation refetches the board (verification-gap) — false: AD-7 steps 5 and 7 specify both.
+- Other untested store paths such as a failed buy or reputation request (blind) — low: they share the tested `runTurn` pipeline.

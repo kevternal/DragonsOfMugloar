@@ -1,0 +1,28 @@
+:root {
+    --color-bg: #faf6ee;
+    --color-surface: #ffffff;
+    --color-text: #2b2118;
+    --color-muted: #5c4e40;
+    --color-border: #c9b9a3;
+    --color-accent: #8a2f1d;
+    --color-accent-text: #ffffff;
+    --color-disabled-bg: #e4dccf;
+    --color-disabled-text: #5c4e40;
+    --color-focus: #0b57d0;
+    --color-error-bg: #fdeaea;
+    --color-error-text: #8a1c1c;
+    --color-notice-bg: #fff4d6;
+
+    --space-1: 0.4rem;
+    --space-2: 0.8rem;
+    --space-3: 1.6rem;
+    --space-4: 2.4rem;
+
+    --font-size-s: 1.4rem;
+    --font-size-m: 1.6rem;
+    --font-size-l: 2rem;
+    --font-size-xl: 2.8rem;
+
+    --radius: 0.6rem;
+    --max-width: 120rem;
+}
