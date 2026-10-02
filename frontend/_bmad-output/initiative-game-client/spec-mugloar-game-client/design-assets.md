@@ -15,3 +15,47 @@ Both fonts are self-hosted through `@fontsource-variable/fredoka` and `@fontsour
 - **Lucide** (`@lucide/vue`; `lucide-vue-next` is deprecated [V npm]): UI glyphs such as clock or hourglass for urgency, cart, refresh, and close. ISC License [V: lucide-icons/lucide `LICENSE`]
 
 Icons are imported per glyph, never as a whole icon font, so the bundle stays small. (Design choice.)
+
+## Approved set [V 2026-10-02]
+
+The user approved the preview at https://claude.ai/artifact/6sw4rvS41Em1TMQUhJyr1q. The SVGs were fetched from github.com/game-icons/icons master and unpkg lucide-static 1.50.0.
+
+### game-icons.net themed icons
+
+| Use | Icon (author/name) |
+|---|---|
+| Lives | lorc/heart-drop |
+| Gold | delapouite/two-coins |
+| Score | lorc/trophy |
+| Turn / expires | lorc/hourglass |
+| Level | sbed/level-four |
+| Dragon | lorc/dragon-head |
+| Jobs | lorc/scroll-unfurled |
+| Shop | delapouite/shop |
+| Shop sign | delapouite/tavern-sign |
+| Tavern notice | lorc/beer-stein |
+| Risk 1 to 4 | lorc/cake-slice, lorc/footprint, delapouite/rolling-dices, sbed/death-skull |
+| Reputation: people, state, underworld | delapouite/person, lorc/crown, lorc/hood |
+
+### Shop items
+
+| Item | Icon |
+|---|---|
+| hpot | delapouite/health-potion |
+| cs | lorc/claw-slashes |
+| gas | delapouite/jerrycan |
+| wax | delapouite/metal-plate |
+| tricks | delapouite/secret-book |
+| wingpot | lorc/standing-potion |
+| ch | lorc/crossed-claws |
+| rf | lorc/rocket |
+| iron | lorc/breastplate |
+| mtrix | delapouite/spell-book |
+
+### Notes
+
+The game-icons SVGs ship with a black square background path. Strip it and fill the icon with `currentColor`.
+
+Lucide icons are used for UI glyphs: check, x, refresh-cw, triangle-alert and info.
+
+The credit line is visible on every screen and names Lorc, Delapouite and Sbed, game-icons.net and CC BY 3.0.

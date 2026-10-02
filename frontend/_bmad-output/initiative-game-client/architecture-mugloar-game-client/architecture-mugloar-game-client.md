@@ -4,17 +4,18 @@ type: architecture-spine
 purpose: build-substrate
 altitude: feature
 paradigm: 'Layered by type (create-vue convention) with a pure-logic layer'
-scope: 'Vue SPA in frontend/ that plays the Dragons of Mugloar API (spec-mugloar-game-client CAP-1..CAP-14)'
+scope: 'Vue SPA in frontend/ that plays the Dragons of Mugloar API (spec-mugloar-game-client CAP-1..CAP-17)'
 status: final
 created: '2026-10-01'
-updated: '2026-10-01'
-binds: [CAP-1, CAP-2, CAP-3, CAP-4, CAP-5, CAP-6, CAP-7, CAP-8, CAP-9, CAP-10, CAP-11, CAP-12, CAP-13, CAP-14]
+updated: '2026-10-02'
+binds: [CAP-1, CAP-2, CAP-3, CAP-4, CAP-5, CAP-6, CAP-7, CAP-8, CAP-9, CAP-10, CAP-11, CAP-12, CAP-13, CAP-14, CAP-15, CAP-16, CAP-17]
 sources: []
 companions:
   - ../spec-mugloar-game-client/spec-mugloar-game-client.md
   - ../spec-mugloar-game-client/api-contract.md
   - ../spec-mugloar-game-client/observed-values.md
   - ../spec-mugloar-game-client/risk-cues.md
+  - ../spec-mugloar-game-client/strategies.md
 ---
 
 # Architecture Spine — Mugloar Game Client
@@ -75,9 +76,9 @@ flowchart LR
 
 ### AD-4 — `game/` owns every value mapping and cue derivation
 
-- **Binds:** CAP-4, CAP-6, CAP-9
-- **Prevents:** cut-offs, ranks, or mappings duplicated across components and drifting from the measured data.
-- **Rule:** `game/` holds the only implementations of these functions. Registries are copied from `observed-values.md` and `risk-cues.md`.
+- **Binds:** CAP-4, CAP-6, CAP-9, CAP-16, CAP-17
+- **Prevents:** cut-offs, ranks, mappings, or strategy rules duplicated across components and drifting from the measured data.
+- **Rule:** `game/` holds the only implementations of these functions. Registries are copied from `observed-values.md`, `risk-cues.md`, and `strategies.md`.
 
   | Function | Returns | Notes |
   | --- | --- | --- |
@@ -87,6 +88,23 @@ flowchart LR
   | `rewardRanks(ads)` | `Map<adId, 'high' \| 'mid' \| 'low'>` | Sorted by reward descending, ties broken by `adId`. The first `ceil(n/3)` are high, the next `ceil(n/3)` mid, the rest low. |
   | `affordability(gold, cost)` | `{ state: 'yes' \| 'no' \| 'unknown'; shortfall: number \| null }` | `'unknown'` when gold is `null`. |
   | `anyAffordable(gold, items)` | boolean | |
+
+  | `riskLevel(probability)` | `1 \| 2 \| 3 \| 4 \| null` | Derived from `riskTier` (safe → 1 … deadly → 4, unknown → `null`); no second label table. |
+  | `winRatePct(level)` | `100 \| 70 \| 40 \| 10` | Integer percent, so comparisons have no float ties. |
+  | `expectedReward(ad)` | `number \| null` | `reward × winRatePct`, an integer (percent-scaled); `null` when the risk is unknown. |
+  | `sortJobs(board, strategy)` | `Ad[]` (new array) | See *Sorting* below. Never filters. |
+  | `shopHint(input)` | `{ kind: 'critical-health' \| 'increase-level'; itemId: string \| null } \| null` | See *Hints* below. |
+  | `shelfOrder(items)` | `ShopItem[]` | Cost ascending, then API response order. The shop view and `shopHint` both use it. |
+
+  **Sorting.** `sortJobs` splits the board into measured ads and unknown-risk ads. Measured ads are sorted by `strategy.sortBy` in order, then by `adId` as the final key. Unknown-risk ads always come after every measured ad (including deadly), sorted by `reward` descending, `expiresIn` ascending, then `adId`. The sort is stable and deterministic across refetches.
+
+  **Hints.** `shopHint({ strategy, status, boardStale, stats, board, shop })` evaluates in this order and returns the first match:
+  1. `null` unless `status === 'playing'`.
+  2. **Critical health:** `stats.lives` is known and `≤ strategy.criticalHealth`. Returns `critical-health` with the item whose `itemEffect` grants a life (the first in `shelfOrder`), or `itemId: null` if the shop has none. It applies whether or not the item is affordable; its buy control shows the shortfall (AD-8). It never falls through to the level hint.
+  3. **Increase level:** the board is fresh (`!boardStale`), has at least one measured ad, and every measured ad's `riskLevel ≥ strategy.increaseLevelAtRisk`. Candidates are level items whose `affordability` is `'yes'`. `optimizeShopFor: 'gold'` picks the cheapest; `'turns'` picks the most levels, then the cheapest. Ties go to the first in `shelfOrder`. No affordable candidate means `null`.
+  4. Otherwise `null`.
+
+  Strategies live in `game/strategies.ts`: one `Strategy` interface (`sortBy`, `criticalHealth`, `increaseLevelAtRisk`, `optimizeShopFor`) and one declarative object per strategy, keyed by `StrategyId = 'safe' | 'glory'`. Sort keys are named functions in a single registry. Components and views never branch on the strategy id; they read the store's derived values (AD-6).
 
   Board-relative results (`rewardRanks`) are computed once by the view and passed as props. A registry miss returns `unknown` or no effect, and calls `console.warn` naming the field and value, in dev builds only.
 
@@ -103,8 +121,8 @@ flowchart LR
 
 ### AD-6 — Store ownership [ADOPTED]
 
-- **Binds:** CAP-1–5, CAP-7, CAP-10–12
-- **Prevents:** two owners of the same game data.
+- **Binds:** CAP-1–5, CAP-7, CAP-10–12, CAP-16, CAP-17
+- **Prevents:** two owners of the same game data, and the shop tab, shop view, and board disagreeing about the strategy's advice.
 - **Rule:** There are exactly two stores.
 
   **`useGameStore`** owns:
@@ -115,20 +133,23 @@ flowchart LR
   - `boardStale`: true while the board could not be refreshed (AD-18)
   - `shop: ShopItem[]`
   - `reputation`: the latest value, or `null`
-  - `lastTurn` (AD-7)
+  - `log: TurnRecord[]` (AD-7)
+  - `strategyId: StrategyId`, default `'safe'`, reset by `start()` and `load()`
   - `pending`
   - `error`
   - `expiredNotice`: a one-shot flag, cleared by `start()`
 
   **`useHighScoresStore`** owns the list of finished-game scores. Each entry is `{ gameId: string; score: number; turn: number; endedAt: string; expired: boolean }`, with `endedAt` in ISO 8601. The list is only appended to, and is sorted best-first when read.
 
+  The game store also exposes two computed values, `sortedBoard` (`sortJobs`) and `hint` (`shopHint`), built from `strategyId` and its own state via `game/` (AD-4). Views read these; they never call `sortJobs` or `shopHint` themselves.
+
   The game store's game-over step calls `useHighScoresStore().append()`. That is the only store-to-store call. The API's `highScore` field is ignored: it was 0 in every probe game [V 2026-10-01].
 
 ### AD-7 — Mutation only through actions, one pipeline [ADOPTED]
 
-- **Binds:** CAP-1–5, CAP-7, CAP-12
+- **Binds:** CAP-1–5, CAP-7, CAP-12, CAP-16
 - **Prevents:** actions that order steps differently, erase known stats, record nothing, or apply a previous game's response.
-- **Rule:** State changes only inside these actions: `start()`, `load(gameId)`, `solve(adId)`, `buy(itemId)`, `investigateReputation()`, and `refreshMessages()`, a player-triggered retry.
+- **Rule:** State changes only inside these actions: `start()`, `load(gameId)`, `solve(adId)`, `buy(itemId)`, `investigateReputation()`, `refreshMessages()` (a player-triggered retry), `refreshShop()` (a player-triggered retry), and `setStrategy(id)`. `setStrategy` calls no API and is not blocked by `pending` (AD-8).
   - `start()` resets the full state first. Restart from game over calls `start()` directly; there is no separate restart action.
   - Every action captures `const id = gameId` before its first `await`, and after each `await` returns without touching state if the store's `gameId` changed. The same applies to `start` and `load`, via the requested id.
 
@@ -137,29 +158,37 @@ flowchart LR
   2. Snapshot the previous stats.
   3. Call the API.
   4. `game/applyTurn(prev, response)` returns `{ stats, deltas }`. Only fields present in the response change; a missing field is unchanged, never `null`. Reputation returns no `turn`, so `turn` increments by +1 locally when known (derived from the inferred [V] in `api-contract.md`). A delta exists only where both sides are numbers.
-  5. Set `stats` and `lastTurn`.
+  5. Set `stats` and append one `TurnRecord` to `log`.
   6. Run the game-over step (AD-9).
   7. If still `playing`, refetch messages (AD-18 governs failures of this refetch).
   8. In `finally`: `pending = false`.
 
-  If the API call fails, `lastTurn` is not set, `error` is set, and step 7 still runs, because the board may be stale. With AD-18, a failed refetch blocks solving, so in single-tab play a stale board can only come from another tab or device playing the same game. A 404 on that refetch means `expired` (AD-5).
+  If the API call fails, no `TurnRecord` is appended, `error` is set, and step 7 still runs, because the board may be stale. With AD-18, a failed refetch blocks solving, so in single-tab play a stale board can only come from another tab or device playing the same game. A 404 on that refetch means `expired` (AD-5).
 
-  `lastTurn` stores display text as a snapshot, never a reference. It is defined once in `game/`:
+  A `TurnRecord` stores display text as a snapshot, never a reference. `log` is append-only, held in memory for the current game only, unbounded, and reset with the game. The record keeps every delta; the log component shows only gold and lives (CAP-12). It is defined once in `game/`:
 
   ```ts
   type Deltas = Partial<Record<'lives' | 'gold' | 'score' | 'level' | 'turn', number>>
-  type LastTurn =
+  type TurnRecord = { seq: number; turn: number | null } & (
     | { kind: 'solve'; adMessage: string; success: boolean; message: string; deltas: Deltas }
     | { kind: 'buy'; itemName: string; success: boolean; deltas: Deltas }
     | { kind: 'reputation'; reputation: Reputation; deltas: Deltas }
+  )
   ```
+
+  - `seq` is a per-game counter owned by the store, reset with the game, used as the list key.
+  - `turn` is the turn after the action, `null` when unknown.
+  - Reputation entries have no success mark.
+  - Display text (`adMessage`, `itemName`) is captured from the ad or item before the API call's `await`.
+  - `setStrategy` is the only writer of `strategyId`; the switch binds `:model-value` and calls it, never `v-model` on store state. A reload resets the strategy to the default (accepted; persistence is deferred).
 
 ### AD-8 — One request at a time, and no doomed buys [ADOPTED]
 
 - **Binds:** CAP-1, CAP-3, CAP-4, CAP-5
 - **Prevents:** a double click creating two games or spending two turns, and a buy that is sure to fail but still spends a turn.
 - **Rule:**
-  - While `pending` is true, every action except `load` returns immediately without calling the API, and every action control renders `disabled`. `start` sets `pending` too.
+  - Turn actions (`solve`, `buy`, `investigateReputation`) and the retries (`refreshMessages`, `refreshShop`) return immediately unless `status === 'playing'`, and their controls render `disabled` otherwise.
+  - While `pending` is true, every action except `load` and `setStrategy` returns immediately without calling the API, and every action control renders `disabled`. `start` sets `pending` too.
   - A buy control is disabled when gold is known and below the cost. It shows the shortfall in text, linked with `aria-describedby`.
   - Every buy with gold ≥ cost succeeded [V], and a failed buy still costs a turn [V].
 
@@ -174,16 +203,18 @@ flowchart LR
 
 ### AD-10 — The URL picks the game; `load` runs once per game [ADOPTED]
 
-- **Binds:** CAP-1, CAP-7, CAP-8, CAP-11
+- **Binds:** CAP-1, CAP-4, CAP-7, CAP-8, CAP-11, CAP-15
 - **Prevents:** the URL and the store disagreeing, and a game being reloaded or wiped on every panel switch.
 - **Rule:** These are the routes. `gameId` is always a path parameter.
 
   | Route | Shows |
   | --- | --- |
   | `/` | Start screen, high scores, and the `expiredNotice` if set |
-  | `/game/:gameId/ads` | Message board (default panel). `/game/:gameId` redirects here. |
-  | `/game/:gameId/shop` | Shop |
+  | `/game/:gameId/ads` | Jobs board, `AdsPanel` (default). `/game/:gameId` redirects here. |
+  | `/game/:gameId/shop` | Shop, `ShopPanel` |
   | `/game/:gameId/over` | Game over |
+
+  `AdsPanel`, `ShopPanel`, and `GameOverView` are child-route components rendered through `GameView`'s `<RouterView>`; exactly one is shown at every width. `GameView` itself renders the stats, reputation, Risk level switch, the ads/shop navigation (with the hint highlight), and the activity log.
 
   `GameView` (the parent route) calls `load(route.params.gameId)` from a `watch` with `immediate` on that param. Switching panels never calls `load`. `load` behaves as follows:
   - **No-op** if the store already holds that `gameId` with status `playing` or `over`.
@@ -191,7 +222,9 @@ flowchart LR
   - **No save:** fetch messages and the shop, and leave the stats `null` (AD-11).
   - **Different `gameId`:** a `gameId` different from the store's replaces the state entirely.
 
-  `/over` renders from the store. If the store doesn't hold that game as `over` (for example after a reload), it redirects to `/`; the high-score list already holds the result.
+  `/over` renders from the store. On entry only (not reactively), if the store doesn't hold that game as `over` (for example after a reload), it redirects to `/`; the high-score list already holds the result. "Play again" calls `start()` and navigates to the new game, which this one-time check never intercepts.
+
+  `GameView`'s `status` watch runs `immediate`, so opening `/ads` or `/shop` for a game the store holds as `over` replaces the route with `/over`.
 
   On `expired`, `GameView` replaces the route with `/`, and the start screen shows `expiredNotice`.
 
@@ -206,13 +239,13 @@ flowchart LR
 
 ### AD-12 — Persistence: one writer, versioned, bounded [ADOPTED]
 
-- **Binds:** CAP-10, CAP-11, CAP-12
+- **Binds:** CAP-10, CAP-11
 - **Prevents:** a cleared save being rewritten, a stale shape crashing the app, high scores lost by another tab or by a version bump, and saves piling up.
 - **Rule:**
 
   **Game save**
   - Key: `mugloar:game:v<G>:<gameId>`.
-  - Shape: `{ gameId, stats, shop, reputation, lastTurn, savedAt }`. The board, `status`, `pending`, and `error` are not persisted. A restore sets status `playing`.
+  - Shape: `{ gameId, stats, shop, reputation, savedAt }`. The activity log, strategy, board, `status`, `pending`, and `error` are not persisted. A restore sets status `playing`.
   - Only a deep `watch` in the game store writes or removes it:
     - writes while `status === 'playing'`
     - removes it on `over` or `expired`
@@ -239,13 +272,17 @@ flowchart LR
 
 ### AD-14 — Size units [ADOPTED]
 
-- **Binds:** CAP-8
-- **Prevents:** breakpoints written as if 1rem = 10px. Inside media queries, rem uses the initial font size, normally 16px [V, Media Queries 4].
+- **Binds:** CAP-8, CAP-15
+- **Prevents:** breakpoints written as if 1rem = 10px, and nested scroll regions fighting the page scroll. Inside media queries, rem uses the initial font size, normally 16px [V, Media Queries 4].
 - **Rule:**
   - `html { font-size: 62.5% }`, and every length uses `rem`, including media queries. `px` is allowed only for hairlines (1px borders).
   - Layout is mobile-first with `min-width` queries.
   - Breakpoints are declared once, annotated with their px value at 16px (for example `48rem /* 768px */`).
-  - Only the global layout stylesheet contains `@media` queries. Components adapt with intrinsic layout (`flex-wrap`, grid `auto-fit` with `minmax`) or `@container` queries, never their own `@media`.
+  - Game screen layout, in the global layout stylesheet:
+    - From 48rem up: a fixed-height grid, `height: 100dvh` (dvh: Chrome 108, Firefox 101, Safari 15.4 [V MDN compat data 2026-10-02]; Vite 8's default target is newer, so no `vh` fallback), rows `auto / minmax(0, 1fr) / var(--log-height) / auto` (top bar, routed view, log, credits line). `--log-height: 10rem`. There are exactly two scroll regions, the routed view and the log (`overflow-y: auto` each); the page never scrolls.
+    - Below 48rem: the page scrolls. The top bar (stats, reputation, Risk level switch, navigation) is a direct child of the game `<main>` with `position: sticky; top: 0`. The bottom bar (log plus the credits line) is its last child with `position: sticky; bottom: 0`; the log has height `var(--log-height-mobile)` (`5rem`) and its own scroll. The tokens keep the two bars under half the viewport at 360 × 640 px.
+    - Sticky preconditions: no ancestor of the sticky bars sets `overflow` to `hidden`, `auto`, or `scroll` (use `overflow-x: clip` for CAP-8); both bars are direct children of the page-tall game container; `html` sets `scroll-padding-block` to the bar heights so focused controls are never hidden under them (WCAG 2.2 SC 2.4.11, technique C43).
+  - Only the global layout stylesheet contains viewport-size `@media` queries. User-preference queries (`prefers-reduced-motion`) may appear in components (AD-15). Components adapt with intrinsic layout (`flex-wrap`, grid `auto-fit` with `minmax`) or `@container` queries, never their own `@media`.
 
 ### AD-15 — Accessibility is part of done [ADOPTED]
 
@@ -259,14 +296,16 @@ flowchart LR
 
   **Interaction**
   - Every action is keyboard-operable with a visible focus style.
-  - Focus moves to the new `<h1>` on route change.
+  - Mechanism: router `afterEach` + `nextTick`, skipped on first load; route components imported eagerly.
+  - `GameView` owns focus: on every route change after the first render, and after a turn when the focused control was disabled or removed, it focuses the active panel's `<h1>` (`tabindex="-1"`). Whether browsers drop focus on a disabled button is [U]; the rule covers both outcomes.
 
   **Conveying information**
   - Risk tier, urgency, affordability, and unknown stats are conveyed in text (visually hidden where needed), never by colour or icon alone.
   - Icon-only controls carry `aria-label`. Decorative icons carry `aria-hidden="true"`.
 
   **Live region and motion**
-  - `GameView` always renders the `aria-live="polite"` region that shows `lastTurn`. Only its content changes; the region is never added with `v-if`.
+  - `GameView` always renders the activity log as a `<section role="log" aria-live="polite" aria-labelledby>` wrapping a plain `<ol>` (`role="log"` is not allowed on `ol`/`ul` [V ARIA in HTML]; its implicit politeness is [V WAI-ARIA 1.2], screen-reader support without explicit `aria-live` is [U], hence the explicit attribute). It is the only live region for turn results. Only its entries change; the log is never added with `v-if`. On a new entry it sets its own `scrollTop` to the end instantly (never `scrollIntoView`, never smooth scrolling).
+  - The Risk level switch is a radio group (native radios styled as a button group), so arrow keys change it.
   - Animations, such as the urgency pulse, are inside `@media (prefers-reduced-motion: no-preference)`.
 
 ### AD-16 — Tests never hit the live API [ADOPTED]
@@ -298,12 +337,15 @@ flowchart LR
 | File names | Components and views are `PascalCase.vue`. Everything else is `kebab-case.ts`, as allowed by oxlint `unicorn/filename-case`. |
 | Stores | `src/stores/<name>.ts` exports `use<Name>Store`, written in setup-store style. |
 | Tests | `*.spec.ts` in a `__tests__/` folder next to the code under test. Component tests query by role and accessible name. |
-| Types | DTOs end in `Dto` (`AdDto`) and live in `api/`. Domain types (`Ad`, `ShopItem`, `Stats`, `Reputation`, `LastTurn`, `Deltas`) live in `game/`. |
+| Types | DTOs end in `Dto` (`AdDto`) and live in `api/`. Domain types (`Ad`, `ShopItem`, `Stats`, `Reputation`, `TurnRecord`, `Deltas`, `Strategy`, `StrategyId`) live in `game/`. |
 | API field names | Domain types keep the API's camelCase names (`adId`, `expiresIn`). No renaming layer. |
 | Design tokens | All colours, spacing, font sizes, and tier colours are CSS custom properties in one global tokens stylesheet. Components use the tokens, never literal values. |
 | Styles | `<style scoped>` per SFC. No CSS framework. |
-| Icons | UI glyphs come from `@lucide/vue`, imported per icon. Themed art is game-icons.net SVG files in `src/assets/icons/`. The footer credits **each icon's author** and the site (CC BY 3.0). |
+| Icons | UI glyphs come from `@lucide/vue`, imported per icon. Themed art is game-icons.net SVG files in `src/assets/icons/` (approved set: Lorc, Delapouite, Sbed). A one-line credits line naming **each icon's author**, the site, and CC BY 3.0 is visible on every screen: inside the game grid on the game screen (AD-14), as the footer elsewhere. |
+| Activity log entries | Only the newest entry shows its flavour subheading; older entries are one line. |
 | Fonts | Self-hosted, never a Google Fonts link. Fredoka for headings and numbers, Nunito for body text. |
+| Shop entry signals | The navigation's shop link shows at most one hint: `critical-health` ("Low health") over `increase-level`. Affordability (CAP-6) is a separate, lower-emphasis marker. |
+| Hint copy | Level hints are keyed by item id in `src/copy.ts` (one line per level item, plus a fallback), so the shown line is deterministic. Wording never promises a better win rate (premise [U]). |
 | Player-facing text | Every error, notice, and empty state uses in-world tavern voice, for example *"The barman went to put up new posters. Come back later, or have a beer."* All of it lives in one module, `src/copy.ts`; no inline user-facing strings. Each message still says what happened, and button labels state the plain action. |
 | Fact tags | Comments or docs stating API behaviour carry `[V]` (with date), `[D]`, or `[U]`, as the spec does. Write "in every probe", never "always". |
 
@@ -316,7 +358,7 @@ flowchart LR
 | TypeScript | ~6.0 (vue-tsc doesn't support TS 7 yet) |
 | Vue | ^3.5.42 |
 | Pinia | ^4.0.3 |
-| @vue/devtools-api | ^8.1.5 (to add: required peer of Pinia 4, currently only auto-installed) |
+| @vue/devtools-api | ^8.2.1 (required peer of Pinia 4) |
 | vue-router | ^5.3.1 |
 | Vite | ^8.2.2 |
 | Vitest | ^4.1.11 (with jsdom, @vue/test-utils ^2.5) |
@@ -333,10 +375,10 @@ To set up during the first build: ESLint `no-restricted-imports` overrides (AD-1
 src/
   App.vue       # becomes a <RouterView> shell; the template's App.spec.ts is rewritten
   api/          # client.ts (fetch, ApiError, base URL), types.ts (DTOs)
-  game/         # decode, registries, cues, apply-turn, parse-save, domain types
+  game/         # decode, registries, cues, strategies, apply-turn, parse-save, domain types
   stores/       # game.ts, high-scores.ts
-  views/        # StartView, GameView (ads/shop child panels, live region), GameOverView
-  components/   # StatsBar, AdCard, ShopItem, LastTurn, ReputationPanel, …
+  views/        # StartView, GameView (top bar, nav, log, RouterView), AdsPanel, ShopPanel, GameOverView
+  components/   # StatsBar, AdCard, ShopItem, ActivityLog, RiskLevelSwitch, ReputationPanel, …
   assets/
     icons/      # game-icons.net SVGs
   styles/       # tokens, breakpoints, base (62.5% root, font imports)
@@ -352,7 +394,7 @@ stateDiagram-v2
   [*] --> loading: "/game/:id/*" (new id)
   loading --> playing: started, save restored + messages, or board + shop fetched
   loading --> expired: GET messages 404
-  playing --> playing: solve / buy / reputation / refreshMessages (one at a time)
+  playing --> playing: solve / buy / reputation / refreshMessages (one at a time); setStrategy any time
   playing --> over: lives === 0
   playing --> expired: GET messages 404
   over --> loading: play again (start)
@@ -382,9 +424,12 @@ The app runs locally only: `pnpm dev` or `pnpm preview`, or a Docker container.
 | CAP-9 Unknown values | `game/` decode and registries | AD-3, AD-4 |
 | CAP-10 High scores | `stores/high-scores`, StartView, GameOverView | AD-6, AD-9, AD-12 |
 | CAP-11 Resume | `stores/game` `load`, GameView | AD-5, AD-10, AD-11, AD-12 |
-| CAP-12 Last turn | `game/` apply-turn, `stores/game` `lastTurn`, LastTurn | AD-7, AD-11, AD-15 |
+| CAP-12 Activity log | `game/` apply-turn, `stores/game` `log`, ActivityLog | AD-7, AD-11, AD-15, AD-17 |
 | CAP-13 Board refresh failure | `stores/game` refetch, board notice, `copy.ts` | AD-18, AD-13, AD-5 |
 | CAP-14 Continue on another device | `stores/game` `load`, GameView | AD-10, AD-11, AD-5 |
+| CAP-15 Layout | `styles/layout.css`, GameView | AD-10, AD-14, AD-15 |
+| CAP-16 Risk level | `game/strategies`, `stores/game` `strategyId` `sortedBoard` `setStrategy`, RiskLevelSwitch, AdsPanel | AD-4, AD-6, AD-7, AD-15 |
+| CAP-17 Strategy hints | `game/strategies` `shopHint`, `stores/game` `hint`, GameView nav, ShopPanel, `copy.ts` | AD-4, AD-6 |
 
 ## Open Questions
 
@@ -398,7 +443,7 @@ The app runs locally only: `pnpm dev` or `pnpm preview`, or a Docker container.
 - **TypeScript 7.** It waits until vue-tsc supports it (expected with 7.1 or later).
 - **Vitest 5.** A deliberate later upgrade. Note that it changes the `clearMocks` default.
 - **Environment-based configuration.** Add it when a second API target exists, such as a mock server or the recommendations backend.
-- **Recommendations backend integration.** This is a non-goal in the spec and needs its own spec.
+- **Recommendations backend integration.** Client-side strategies (AD-4) are in scope; a backend is a non-goal and needs its own spec. If it arrives, strategy state may move to its own store.
 - **Two tabs on the same game.** Unsupported: the last save wins, and the other tab hits 404 and `expired`. Different games in different tabs work. High scores merge on append (AD-9).
 - **Dark mode or theming, and i18n.** Not required. The tokens stylesheet keeps theming cheap later, and the UI copy is English only.
 - **CI pipeline.** Local-only project. Revisit if the repo gains collaborators.
@@ -415,4 +460,11 @@ The app runs locally only: `pnpm dev` or `pnpm preview`, or a Docker container.
 - game-icons.net licence: https://game-icons.net/about.html
 - TypeScript 7 / vue-tsc: https://visualstudiomagazine.com/articles/2026/06/22/typescript-7-0-rc-moves-microsofts-go-rewrite-into-the-mainline-compiler.aspx
 - Feature-Sliced Design (rejected): https://feature-sliced.design/docs/get-started/overview
-- Reviews: `reviews/review-rubric.md`, `reviews/review-adversary.md`, `reviews/review-versions.md`
+- MDN browser-compat-data, `css/types/length.json`, 2026-10-02: dynamic viewport units
+- WAI-ARIA 1.2 `log` role: https://www.w3.org/TR/wai-aria-1.2/#log
+- ARIA in HTML (allowed roles on `ol`/`ul`): https://www.w3.org/TR/html-aria/
+- WAI-ARIA APG radio group pattern: https://www.w3.org/WAI/ARIA/apg/patterns/radio/
+- MDN `position: sticky`: https://developer.mozilla.org/en-US/docs/Web/CSS/position
+- WCAG 2.2 SC 2.4.11 and technique C43: https://www.w3.org/WAI/WCAG22/Understanding/focus-not-obscured-minimum
+- Vue Router nested routes and navigation guards: https://router.vuejs.org/guide/essentials/nested-routes.html, https://router.vuejs.org/guide/advanced/navigation-guards.html
+- Reviews: `reviews/review-adversary-2.md`, `reviews/review-versions-2.md`, `reviews/review-rubric.md`, `reviews/review-adversary.md`, `reviews/review-versions.md`

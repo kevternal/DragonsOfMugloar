@@ -16,7 +16,7 @@ stateDiagram-v2
     Solve --> Board: solve response
     Buy --> Board: buy response
     Reputation --> Board: show values
-    note right of Board : last-turn summary (CAP-12) shown after each Solve, Buy, Reputation
+    note right of Board : activity log entry (CAP-12) added after each Solve, Buy, Reputation
   }
   Turn --> GameOver: lives == 0 (score saved to own high scores)
   GameOver --> Loading: restart (new game)

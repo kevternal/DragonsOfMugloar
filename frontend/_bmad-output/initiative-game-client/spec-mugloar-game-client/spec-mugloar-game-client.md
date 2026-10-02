@@ -5,6 +5,7 @@ companions:
   - observed-values.md
   - game-flow.md
   - risk-cues.md
+  - strategies.md
   - design-assets.md
   - ../architecture-mugloar-game-client/architecture-mugloar-game-client.md
 sources: []
@@ -31,10 +32,10 @@ A vision to realize: a playable browser UI for the Dragons of Mugloar game API (
   - **success:** Picking an ad calls `solve/:adId` with the decoded adId. The client shows the response `message` and whether it succeeded, updates lives, gold, score, and turn, and refreshes the board.
 - **CAP-4**
   - **intent:** Player buys items from the shop.
-  - **success:** The shop lists each item's name, cost, and its verified effect from `observed-values.md` (+1 or +2 level, or +1 life). An item with no recorded effect shows none. Buying calls `shop/buy/:itemId`, shows success or failure, and updates gold, lives, level, and turn. When gold is known and below the cost, the buy control is disabled and shows the shortfall, because a failed buy still costs a turn [V].
+  - **success:** The shop is its own view at `/game/<gameId>/shop`, shown as shelves with items cheapest first, tavern flavour text, and no animation. It lists each item's name, cost, and its verified effect from `observed-values.md` (+1 or +2 level, or +1 life). An item with no recorded effect shows none. Buying calls `shop/buy/:itemId`, shows success or failure, and updates gold, lives, level, and turn. When gold is known and below the cost, the buy control is disabled and shows the shortfall, because a failed buy still costs a turn [V].
 - **CAP-5**
   - **intent:** Player sees their reputation with people, the state, and the underworld.
-  - **success:** When the player asks, the client calls `investigate/reputation` and shows all three values, labelled as costing one turn.
+  - **success:** When the player asks, the client calls `investigate/reputation` and shows all three values, labelled as costing one turn. The last known values stay visible next to the stats (on mobile, below them), and show as unknown until first investigated.
 - **CAP-6**
   - **intent:** The player can read the risk and reward of every choice before reading any text.
   - **success:** Each ad visibly encodes its risk tier, its reward rank, and its urgency. Each shop item visibly shows whether it is affordable (gold ≥ cost). The mapping is in `risk-cues.md`.
@@ -54,14 +55,30 @@ A vision to realize: a playable browser UI for the Dragons of Mugloar game API (
   - **intent:** A game in progress survives a page reload.
   - **success:** After a reload mid-game, the same gameId and stats come back and play continues. If the API rejects the saved gameId, the save is cleared and the start screen is shown.
 - **CAP-12**
-  - **intent:** The player sees what happened on the last turn.
-  - **success:** After every action that consumes a turn (solve, buy, reputation), a summary shows the action taken (which ad or item), the API result message, and how lives, gold, score, level, and turn changed (for example −1 life, +251 gold). The summary is still shown after a reload (CAP-11).
+  - **intent:** The player sees what happened on each turn.
+  - **success:** Each action that consumes a turn (solve, buy, reputation) adds an entry to an activity log, and the log scrolls to the newest entry. An entry shows:
+    - the turn;
+    - a success or failure mark;
+    - the action (which ad or item);
+    - the changes to gold and lives, e.g. +82 gold, −1 life. Score, level and turn changes are not shown.
+
+    The API flavour message appears as a subheading. The log is kept in memory for the session only, with no size limit.
 - **CAP-13**
   - **intent:** The player is never misled by a board that failed to refresh.
   - **success:** When the board can't be refreshed, the client retries it automatically at most twice. Solving stays disabled until a refresh succeeds; the shop stays usable. If the retries fail, the board shows a tavern-voice notice (for example *"The barman went to put up new posters. Come back later, or have a beer."*) with a plainly labelled retry button.
 - **CAP-14**
   - **intent:** The player can continue a game on another device through its link.
   - **success:** Opening `/game/<gameId>/…` on a device with no save for that game shows the board and the shop. The stats show as unknown until the next action. A game that has ended or expired shows a notice and returns to the start screen.
+
+- **CAP-15**
+  - **intent:** On desktop the player sees everything they need without scrolling the page; on mobile the essentials stay in reach.
+  - **success:** At 1440 px, the stats, the reputation and the activity log are always visible, and only the jobs or shop view scrolls; the page itself never scrolls. At 360 px, the page scrolls, but the stats stay pinned at the top and the activity log stays pinned at the bottom.
+- **CAP-16**
+  - **intent:** The player picks a risk strategy that orders the jobs board for them.
+  - **success:** A "Risk level" switch offers Play it safe (the default) and For Glory!. It can be changed at any time and resets on each new game. The board is re-sorted according to `strategies.md`, and no job is ever hidden or disabled.
+- **CAP-17**
+  - **intent:** The strategy nudges the player toward the shop when it matters.
+  - **success:** At the strategy's critical health, the shop entry point shows "Low health" and the healing potion is recommended. When every measured job is at or above the strategy's risk threshold and a level item is affordable, the shop entry point is highlighted and a level item is recommended with a non-promising tavern hint (`strategies.md`).
 
 ## Constraints
 
@@ -81,10 +98,11 @@ A vision to realize: a playable browser UI for the Dragons of Mugloar game API (
 
 ## Non-goals
 
-- Move recommendations or hints, including gold-per-turn advice on which items to buy. These need a separate backend and integration, and go in a later spec.
+- A recommendation backend or advice beyond the fixed client-side rules in `strategies.md`. Smarter recommendations need a separate backend and integration, are optional, and go in a later spec.
 - Auto-play or a bot.
 - A victory screen or end state at 1000 points.
 - Accounts, server-side leaderboards, and syncing saved state between devices. A game link continues play on another device (CAP-14), but stats aren't carried over.
+- Restoring the activity log after a reload, and remembering the strategy between games.
 - Showing reputation automatically each turn (see Constraints).
 
 ## Success signal

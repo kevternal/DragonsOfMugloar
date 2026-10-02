@@ -6,13 +6,15 @@ Every cue pairs a colour with an icon or shape so that meaning never relies on c
 
 ## Risk tier, from `probability`, easiest first
 
-| Tier | Labels | Measured win rate |
-|---|---|---|
-| safe | Piece of cake, Sure thing | 100% |
-| moderate | Walk in the park, Quite likely, Hmmm.... | 67–69% |
-| risky | Risky, Gamble, Rather detrimental | 36–47% |
-| deadly | Playing with fire, Suicide mission, Impossible | 0–25% |
-| unknown | any label not in `observed-values.md` (neutral styling, CAP-9) | — |
+| Risk level | Tier | Labels | Measured win rate |
+|---|---|---|---|
+| 1 | safe | Piece of cake, Sure thing | 100% |
+| 2 | moderate | Walk in the park, Quite likely, Hmmm.... | 67–69% |
+| 3 | risky | Risky, Gamble, Rather detrimental | 36–47% |
+| 4 | deadly | Playing with fire, Suicide mission, Impossible | 0–25% |
+| — | unknown | any label not in `observed-values.md` (neutral styling, CAP-9) | — |
+
+Each risk level's representative win rate, and how strategies use it, are in `strategies.md`.
 
 The labels' wording doesn't match how hard they are. "Hmmm...." plays like "Walk in the park", and "Playing with fire" plays like "Suicide mission". The tier, not the label text, drives the visual cue. Sure thing's place in "safe" carries an unresolved contradiction (see `observed-values.md`).
 
