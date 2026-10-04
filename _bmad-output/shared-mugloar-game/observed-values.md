@@ -4,7 +4,7 @@ This is a registry of undocumented or enum-like API fields. Add a row only for a
 
 **Tags:** **[V]** means verified by a probe against the live API. **[D]** means stated in the docs but not observed. **[U]** means unverified or contradicted.
 
-When the client hits a value that isn't listed here, it renders it neutrally and warns in dev (CAP-9). That warning is the cue to add a row here.
+A consumer that hits a value not listed here must handle it neutrally (frontend: CAP-9). That is the cue to add a row here.
 
 **Main source:** the budgeted measurement on 2026-10-01: 400 requests at 1 request per 2 s, 8 games, 162 solve attempts spread evenly across the labels. Board counts come from 1630 ad sightings in the same run. Earlier ad-hoc probes on the same day are cited where they're used.
 
@@ -76,7 +76,7 @@ Values can be negative and fractional. All 17 solves before turn 34 were Piece o
 
 ## Solve `message` [V]
 
-These values were seen: "You successfully solved the mission!", "You failed on the mission!", "You were defeated on your last mission!" (the solve that takes lives to 0), and "You fell into a trap set up, by people who did not appreciat…" (truncated in the log). The text is free-form; the `success` flag drives the logic.
+These values were seen: "You successfully solved the mission!", "You failed on the mission!", "You were defeated on your last mission!" (the solve that takes lives to 0), and "You fell into a trap set up, by people who did not appreciate your dealings." (full text seen 2026-10-04; every failed "Steal super awesome diamond …" bait ad returned it, see `strategy-findings.md`). The text is free-form; the `success` flag drives the logic.
 
 ## `highScore` [V]
 

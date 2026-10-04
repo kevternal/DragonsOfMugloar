@@ -1,8 +1,8 @@
 ---
 id: SPEC-mugloar-game-client
 companions:
-  - api-contract.md
-  - observed-values.md
+  - ../../shared-mugloar-game/api-contract.md
+  - ../../shared-mugloar-game/observed-values.md
   - game-flow.md
   - risk-cues.md
   - strategies.md

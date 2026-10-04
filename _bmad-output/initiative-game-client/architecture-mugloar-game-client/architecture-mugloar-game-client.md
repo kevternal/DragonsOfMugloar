@@ -12,8 +12,8 @@ binds: [CAP-1, CAP-2, CAP-3, CAP-4, CAP-5, CAP-6, CAP-7, CAP-8, CAP-9, CAP-10, C
 sources: []
 companions:
   - ../spec-mugloar-game-client/spec-mugloar-game-client.md
-  - ../spec-mugloar-game-client/api-contract.md
-  - ../spec-mugloar-game-client/observed-values.md
+  - ../../shared-mugloar-game/api-contract.md
+  - ../../shared-mugloar-game/observed-values.md
   - ../spec-mugloar-game-client/risk-cues.md
   - ../spec-mugloar-game-client/strategies.md
 ---

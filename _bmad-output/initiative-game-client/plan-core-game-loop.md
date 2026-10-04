@@ -13,7 +13,7 @@ lenses_ran: []
 review_loop_iteration: 0
 context:
   - '{project-root}/_bmad-output/initiative-game-client/spec-mugloar-game-client/spec-mugloar-game-client.md'
-  - '{project-root}/_bmad-output/initiative-game-client/spec-mugloar-game-client/api-contract.md'
+  - '{project-root}/_bmad-output/shared-mugloar-game/api-contract.md'
   - '{project-root}/_bmad-output/initiative-game-client/architecture-mugloar-game-client/architecture-mugloar-game-client.md'
 ---
 
