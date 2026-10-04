@@ -6,6 +6,8 @@ public class MugloarApiException extends RuntimeException {
     public enum Kind {
         /** A 404 from {@code GET messages}: the game is over or expired [V]. */
         EXPIRED,
+        /** A 404 from solve or buy: the ad or item is gone; never retried. */
+        GONE,
         /** Any other non-2xx response, or a body that could not be read. */
         HTTP,
         /** No response: connect failure, read timeout, I/O error. */

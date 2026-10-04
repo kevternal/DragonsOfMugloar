@@ -24,15 +24,17 @@ public class PauseControl {
     }
 
     private final InputStream in;
+    private final Listener listener;
     private boolean paused;
 
-    public PauseControl(InputStream in) {
+    public PauseControl(InputStream in, Listener listener) {
         this.in = in;
+        this.listener = listener;
     }
 
     /** Starts the reader thread. */
-    public void start(Listener listener) {
-        Thread reader = new Thread(() -> read(listener), "npc-pause-control");
+    public void start() {
+        Thread reader = new Thread(this::read, "npc-pause-control");
         reader.setDaemon(true);
         reader.start();
     }
@@ -48,7 +50,7 @@ public class PauseControl {
         }
     }
 
-    private void read(Listener listener) {
+    private void read() {
         BufferedReader lines = new BufferedReader(new InputStreamReader(in, Charset.defaultCharset()));
         try {
             while (lines.readLine() != null) {

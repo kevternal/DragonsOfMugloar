@@ -13,6 +13,8 @@ import java.io.PipedOutputStream;
 import java.io.PrintStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 
@@ -23,8 +25,9 @@ import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
 import io.github.kevternal.dragonsofmugloar.npc.api.MugloarClient;
+import io.github.kevternal.dragonsofmugloar.npc.api.MugloarProperties;
+import io.github.kevternal.dragonsofmugloar.npc.console.ConsoleView;
 import io.github.kevternal.dragonsofmugloar.npc.console.PauseControl;
-import io.github.kevternal.dragonsofmugloar.npc.console.Terminal;
 
 /** The loop end to end against a mock server (AD-16); sleeps are no-ops. Output is plain mode. */
 class NpcRunnerTest {
@@ -35,15 +38,18 @@ class NpcRunnerTest {
 
     private final RestClient.Builder builder = RestClient.builder();
     private final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-    private final MugloarClient client = new MugloarClient(builder, millis -> { });
+    private final MugloarClient client = new MugloarClient(builder,
+            new MugloarProperties(BASE, "test-agent", List.of(Duration.ofSeconds(2), Duration.ofSeconds(5))),
+            millis -> { });
     private final ByteArrayOutputStream out = new ByteArrayOutputStream();
+    private final ConsoleView console = new ConsoleView(new PrintStream(out, true, StandardCharsets.UTF_8), false);
 
     private NpcRunner runner(PauseControl pause) {
-        return new NpcRunner(client, new Terminal(new PrintStream(out, true, StandardCharsets.UTF_8), false), pause);
+        return new NpcRunner(new GamePlayer(client, pause, List.of(console)));
     }
 
     private NpcRunner runner() {
-        return runner(new PauseControl(idleStdin()));
+        return runner(new PauseControl(idleStdin(), console));
     }
 
     /** A connected pipe nobody writes to: the pause control waits forever, so its state never changes. */
@@ -120,6 +126,16 @@ class NpcRunnerTest {
 
         server.verify();
         assertThat(output()).endsWith("Run ended: game expired | score 10 | turn 0 | level 2 | lives 3 | gold 0 | requests used 3\n");
+    }
+
+    @Test
+    void failedStartEndsTheRunWithoutStats() {
+        server.expect(requestTo(BASE + "/game/start")).andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+
+        runner().run(null);
+
+        server.verify();
+        assertThat(output()).isEqualTo("Run ended: error: HTTP 503 (HTTP 503) | requests used 1\n");
     }
 
     @Test
@@ -229,7 +245,7 @@ class NpcRunnerTest {
     @Test
     void pauseBetweenTurnsSendsNothingUntilResumed() throws Exception {
         PipedOutputStream keyboard = new PipedOutputStream();
-        PauseControl pause = new PauseControl(new PipedInputStream(keyboard));
+        PauseControl pause = new PauseControl(new PipedInputStream(keyboard), console);
         startAndShop(3, 0);
         respond("/g1/messages", SAFE_BOARD);
         // Enter is pressed while turn 1's solve is in flight: the solve still finishes and is logged.
@@ -261,7 +277,7 @@ class NpcRunnerTest {
     @Test
     void pauseDuringMessagesFetchHoldsTheSolveUntilResumed() throws Exception {
         PipedOutputStream keyboard = new PipedOutputStream();
-        PauseControl pause = new PauseControl(new PipedInputStream(keyboard));
+        PauseControl pause = new PauseControl(new PipedInputStream(keyboard), console);
         startAndShop(3, 0);
         // Enter is pressed while turn 1's messages fetch is in flight.
         server.expect(requestTo(BASE + "/g1/messages")).andRespond(request -> {

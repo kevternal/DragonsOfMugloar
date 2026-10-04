@@ -5,15 +5,26 @@ spring:
     # A console app: plays one game and exits; no web server is started.
     web-application-type: none
     banner-mode: off
-  docker:
-    compose:
-      # No compose service exists yet.
-      enabled: false
+  http:
+    clients:
+      connect-timeout: 5s
+      read-timeout: 10s
+      imperative:
+        # The JDK's HttpURLConnection, as before.
+        factory: simple
 
 logging:
   level:
     # Keeps Spring's output out of the activity log on stdout.
     root: warn
 
+mugloar:
+  base-url: https://dragonsofmugloar.com/api/v2
+  # Python's default UA got 403 [V]; Java's default is [U], so send our own.
+  user-agent: dragons-of-mugloar-npc/0.0.1
+  # AD-18: delays before the first and second retry of GET messages.
+  retry-delays: [2s, 5s]
+
 npc:
   enabled: true
+  history-dir: games-history

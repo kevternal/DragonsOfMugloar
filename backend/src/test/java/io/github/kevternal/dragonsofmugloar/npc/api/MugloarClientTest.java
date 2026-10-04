@@ -13,6 +13,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 import java.io.IOException;
 import java.net.SocketTimeoutException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -28,6 +29,9 @@ import org.springframework.web.client.RestClient;
 class MugloarClientTest {
 
     private static final String BASE = "https://dragonsofmugloar.com/api/v2";
+    private static final String USER_AGENT = "dragons-of-mugloar-npc/0.0.1";
+    private static final MugloarProperties PROPERTIES =
+            new MugloarProperties(BASE, USER_AGENT, List.of(Duration.ofSeconds(2), Duration.ofSeconds(5)));
     private static final String MESSAGES = BASE + "/g1/messages";
     private static final String START_JSON =
             "{\"gameId\":\"g1\",\"lives\":3,\"gold\":0,\"level\":0,\"score\":0,\"highScore\":0,\"turn\":0}";
@@ -40,13 +44,13 @@ class MugloarClientTest {
     void setUp() {
         RestClient.Builder builder = RestClient.builder();
         server = MockRestServiceServer.bindTo(builder).build();
-        client = new MugloarClient(builder, sleeps::add);
+        client = new MugloarClient(builder, PROPERTIES, sleeps::add);
     }
 
     @Test
     void parsesBareArraysAndSendsUserAgent() {
         server.expect(requestTo(BASE + "/game/start")).andExpect(method(HttpMethod.POST))
-                .andExpect(header("User-Agent", MugloarClient.USER_AGENT))
+                .andExpect(header("User-Agent", USER_AGENT))
                 .andRespond(withSuccess(START_JSON, MediaType.APPLICATION_JSON));
         server.expect(requestTo(MESSAGES)).andRespond(withSuccess("""
                 [{"adId":"a1","message":"Help","reward":82,"expiresIn":3,"encrypted":null,"probability":"Sure thing"},
@@ -141,15 +145,30 @@ class MugloarClientTest {
     }
 
     @Test
-    void solve404IsAnHttpErrorNotExpiry() {
+    void solve404MeansGoneAndIsNotRetried() {
         server.expect(once(), requestTo(BASE + "/g1/solve/a1")).andRespond(withStatus(HttpStatus.NOT_FOUND)
                 .contentType(MediaType.TEXT_HTML).body("<html>Not Found</html>"));
 
         assertThatThrownBy(() -> client.solve("g1", "a1"))
                 .isInstanceOfSatisfying(MugloarApiException.class, e -> {
-                    assertThat(e.kind()).isEqualTo(MugloarApiException.Kind.HTTP);
+                    assertThat(e.kind()).isEqualTo(MugloarApiException.Kind.GONE);
                     assertThat(e.status()).isEqualTo(404);
                 });
+        assertThat(sleeps).isEmpty();
+        server.verify();
+    }
+
+    @Test
+    void buy404MeansGoneAndIsNotRetried() {
+        server.expect(once(), requestTo(BASE + "/g1/shop/buy/hpot")).andRespond(withStatus(HttpStatus.NOT_FOUND)
+                .contentType(MediaType.TEXT_HTML).body("<html>Not Found</html>"));
+
+        assertThatThrownBy(() -> client.buy("g1", "hpot"))
+                .isInstanceOfSatisfying(MugloarApiException.class, e -> {
+                    assertThat(e.kind()).isEqualTo(MugloarApiException.Kind.GONE);
+                    assertThat(e.status()).isEqualTo(404);
+                });
+        assertThat(sleeps).isEmpty();
         server.verify();
     }
 

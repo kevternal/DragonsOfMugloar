@@ -23,8 +23,7 @@ class PauseControlTest {
 
     PauseControlTest() throws IOException {
         stdin = new PipedInputStream(keyboard);
-        control = new PauseControl(stdin);
-        control.start(new PauseControl.Listener() {
+        control = new PauseControl(stdin, new PauseControl.Listener() {
             @Override
             public void toggled(boolean paused) {
                 events.add(paused ? "paused" : "running");
@@ -35,6 +34,7 @@ class PauseControlTest {
                 events.add("closed");
             }
         });
+        control.start();
     }
 
     private void pressEnter() throws IOException {

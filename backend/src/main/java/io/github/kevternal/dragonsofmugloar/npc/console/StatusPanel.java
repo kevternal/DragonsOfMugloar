@@ -14,7 +14,7 @@ import io.github.kevternal.dragonsofmugloar.npc.game.Stats;
  * of the screen, prints the new lines if any, then reprints the panel. In plain mode (stdout is not a
  * terminal) there are no escape codes: the lines are followed by one plain status line.
  *
- * <p>Not thread-safe; {@link Terminal} synchronizes every call.
+ * <p>Not thread-safe; {@link ConsoleView} synchronizes every call.
  */
 final class StatusPanel {
 
