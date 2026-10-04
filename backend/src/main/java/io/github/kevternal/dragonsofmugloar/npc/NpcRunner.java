@@ -63,6 +63,7 @@ public class NpcRunner implements ApplicationRunner {
             // Level is tracked from start and buy responses only; solving doesn't change it [V].
             stats = new Stats(start.lives(), start.gold(), start.level(), start.score(), start.turn());
             terminal.status(stats);
+            terminal.startHistory(gameId);
             List<ShopItem> shop = client.shop(gameId).stream()
                     .map(dto -> new ShopItem(dto.id(), dto.name(), dto.cost()))
                     .toList();

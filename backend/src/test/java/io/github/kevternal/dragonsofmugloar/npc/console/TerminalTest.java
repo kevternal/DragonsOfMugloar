@@ -3,11 +3,18 @@ package io.github.kevternal.dragonsofmugloar.npc.console;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import io.github.kevternal.dragonsofmugloar.npc.game.Stats;
 import io.github.kevternal.dragonsofmugloar.npc.game.TurnRecord;
@@ -168,5 +175,58 @@ class TerminalTest {
     void summaryWithoutStats() {
         terminal(false).summary("error: NETWORK", null, 1);
         assertThat(output()).isEqualTo("Run ended: error: NETWORK | requests used 1\n");
+    }
+
+    private static final Clock START = Clock.fixed(Instant.parse("2026-10-04T14:05:09Z"), ZoneOffset.UTC);
+
+    @Test
+    void historyFileDuplicatesTheLogInPlainForm(@TempDir Path dir) throws IOException {
+        Path historyDir = dir.resolve("games-history");
+        Terminal terminal = new Terminal(new PrintStream(bytes, true, StandardCharsets.UTF_8), true, historyDir, START);
+        terminal.status(SOLVE.before());
+        terminal.startHistory("abc123");
+        terminal.log(SOLVE);
+        terminal.toggled(true);
+        terminal.toggled(false);
+        terminal.log(BUY);
+        terminal.summary("game over", BUY.after(), 7);
+
+        Path file = historyDir.resolve("2026-10-04_14-05-09-abc123.txt");
+        assertThat(Files.readAllLines(file, StandardCharsets.UTF_8)).containsExactly(
+                "Game abc123 | started 2026-10-04T14:05:09",
+                "Turn 12 | Lives 3 | Level 4 | Gold 79 | Score 818",
+                " ✓ Solve  Help defend the village (Piece of cake, 82)",
+                "   You successfully solved the mission!",
+                "   +82 gold",
+                "Turn 13 | Lives 3 | Level 4 | Gold 161 | Score 900",
+                " ✓ Buy    Healing potion",
+                "   −50 gold, +1 life",
+                "Turn 14 | Lives 3 | Level 4 | Gold 161 | Score 900",
+                "Run ended: game over | score 900 | turn 14 | level 4 | lives 3 | gold 161 | requests used 7");
+        // The terminal still drew its ANSI panel.
+        assertThat(output()).contains("\u001B[");
+    }
+
+    @Test
+    void noHistoryDirMeansNoFile(@TempDir Path dir) throws IOException {
+        Terminal terminal = terminal(false);
+        terminal.startHistory("abc123");
+        terminal.summary("game over", BUY.after(), 1);
+        try (var files = Files.list(dir)) {
+            assertThat(files).isEmpty();
+        }
+    }
+
+    @Test
+    void unwritableHistoryWarnsOnceAndPlaysOn(@TempDir Path dir) throws IOException {
+        Path notADir = Files.writeString(dir.resolve("games-history"), "a file, not a directory");
+        Terminal terminal = new Terminal(new PrintStream(bytes, true, StandardCharsets.UTF_8), false, notADir, START);
+        terminal.status(SOLVE.before());
+        terminal.startHistory("abc123");
+        terminal.log(SOLVE);
+        terminal.summary("game over", SOLVE.after(), 3);
+
+        assertThat(output()).containsOnlyOnce("Warning: no history file").contains("Run ended: game over");
+        assertThat(Files.readString(notADir)).isEqualTo("a file, not a directory");
     }
 }

@@ -31,3 +31,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Game logs (Terminal history files) ###
+games-history/

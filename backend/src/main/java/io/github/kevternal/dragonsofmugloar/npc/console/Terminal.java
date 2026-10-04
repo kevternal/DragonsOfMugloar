@@ -1,7 +1,14 @@
 package io.github.kevternal.dragonsofmugloar.npc.console;
 
 import java.io.Console;
+import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Clock;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.ToIntFunction;
@@ -17,6 +24,10 @@ import io.github.kevternal.dragonsofmugloar.npc.game.TurnRecord;
  * of the screen, prints the new entry if any, then reprints the panel. In plain mode (stdout is not a
  * terminal) there are no escape codes: each entry is followed by one plain status line.
  *
+ * <p>Each game is also written to a plain-text file in the history directory, for later analysis:
+ * the starting status, every entry with its status line, and the summary. No escape codes and no
+ * pause toggles.
+ *
  * <p>Methods are synchronized: the pause control calls in from its reader thread.
  */
 public class Terminal implements PauseControl.Listener {
@@ -29,9 +40,16 @@ public class Terminal implements PauseControl.Listener {
     static final String RUNNING_NO_PAUSE = "▶ running · pause unavailable (stdin closed)";
     // Idle games expired somewhere between 5 and about 40 minutes [U] (api-contract.md, Game lifetime).
     static final String IDLE_WARNING = "! An idle game may expire after a few minutes";
+    static final Path HISTORY_DIR = Path.of("games-history");
+    static final DateTimeFormatter FILE_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss");
 
     private final PrintStream out;
     private final boolean ansi;
+    /** Where game files go; null turns the history file off. */
+    private final Path historyDir;
+    private final Clock clock;
+    /** The current game's history file; null when none is open. */
+    private PrintStream history;
     private Stats stats;
     private boolean paused;
     private boolean pauseAvailable = true;
@@ -43,17 +61,50 @@ public class Terminal implements PauseControl.Listener {
 
     /** Production: ANSI only when stdout is a terminal. */
     public Terminal() {
-        this(System.out, isTerminal());
+        this(System.out, isTerminal(), HISTORY_DIR, Clock.systemDefaultZone());
     }
 
+    /** No history file. */
     public Terminal(PrintStream out, boolean ansi) {
+        this(out, ansi, null, Clock.systemDefaultZone());
+    }
+
+    public Terminal(PrintStream out, boolean ansi, Path historyDir, Clock clock) {
         this.out = out;
         this.ansi = ansi;
+        this.historyDir = historyDir;
+        this.clock = clock;
     }
 
     private static boolean isTerminal() {
         Console console = System.console();
         return console != null && console.isTerminal();
+    }
+
+    /**
+     * Opens {@code <start time>-<gameId>.txt} in the history directory and writes its header. If the
+     * file can't be created, prints one warning and the game plays on without it.
+     */
+    public synchronized void startHistory(String gameId) {
+        if (historyDir == null) {
+            return;
+        }
+        LocalDateTime start = LocalDateTime.now(clock);
+        String name = start.format(FILE_TIME) + "-" + gameId + ".txt";
+        try {
+            Path file = historyDir.resolve(name);
+            Files.createDirectories(historyDir);
+            history = new PrintStream(Files.newOutputStream(file), true, StandardCharsets.UTF_8);
+        } catch (IOException | RuntimeException e) {
+            erasePanel();
+            out.println("Warning: no history file " + historyDir + "/" + name + " (" + e + ")");
+            refresh(List.of());
+            return;
+        }
+        history.println("Game " + gameId + " | started " + start.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        if (stats != null) {
+            history.println(historyStatus());
+        }
     }
 
     /** Sets the stats the panel shows and redraws it (plain mode: prints a status line). */
@@ -65,7 +116,12 @@ public class Terminal implements PauseControl.Listener {
     /** Prints one turn entry above the panel, then redraws the panel with the new stats. */
     public synchronized void log(TurnRecord record) {
         this.stats = record.after();
-        refresh(formatEntry(record));
+        List<String> entry = formatEntry(record);
+        refresh(entry);
+        if (history != null) {
+            entry.forEach(history::println);
+            history.println(historyStatus());
+        }
     }
 
     @Override
@@ -98,6 +154,11 @@ public class Terminal implements PauseControl.Listener {
                         stats.score(), stats.turn(), stats.level(), stats.lives(), stats.gold(), requestsUsed);
         out.println("Run ended: " + reason + " | " + body);
         out.flush();
+        if (history != null) {
+            history.println("Run ended: " + reason + " | " + body);
+            history.close();
+            history = null;
+        }
     }
 
     private void refresh(List<String> entry) {
@@ -163,6 +224,11 @@ public class Terminal implements PauseControl.Listener {
             return PAUSED;
         }
         return pauseAvailable ? RUNNING : RUNNING_NO_PAUSE;
+    }
+
+    /** The stats line with " | " separators, without the pause state. */
+    String historyStatus() {
+        return statsLine().replaceAll(" {2,}", " | ");
     }
 
     String plainStatus() {
