@@ -5,10 +5,16 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
 import java.io.PrintStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -17,22 +23,40 @@ import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
 import io.github.kevternal.dragonsofmugloar.npc.api.MugloarClient;
+import io.github.kevternal.dragonsofmugloar.npc.console.PauseControl;
 import io.github.kevternal.dragonsofmugloar.npc.console.Terminal;
 
-/** The loop end to end against a mock server (AD-16); sleeps are no-ops. */
+/** The loop end to end against a mock server (AD-16); sleeps are no-ops. Output is plain mode. */
 class NpcRunnerTest {
 
     private static final String BASE = "https://dragonsofmugloar.com/api/v2";
+    private static final String SAFE_BOARD = "[{\"adId\":\"a1\",\"message\":\"Slay\",\"reward\":40,\"expiresIn\":2,"
+            + "\"encrypted\":null,\"probability\":\"Sure thing\"}]";
 
     private final RestClient.Builder builder = RestClient.builder();
     private final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+    private final MugloarClient client = new MugloarClient(builder, System::nanoTime, millis -> { });
     private final ByteArrayOutputStream out = new ByteArrayOutputStream();
 
-    private NpcRunner runner(String input) {
-        MugloarClient client = new MugloarClient(builder, System::nanoTime, millis -> { });
-        Terminal terminal = new Terminal(new PrintStream(out, true, StandardCharsets.UTF_8),
-                new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)));
-        return new NpcRunner(client, terminal);
+    private NpcRunner runner(PauseControl pause) {
+        return new NpcRunner(client, new Terminal(new PrintStream(out, true, StandardCharsets.UTF_8), false), pause);
+    }
+
+    private NpcRunner runner() {
+        return runner(new PauseControl(idleStdin()));
+    }
+
+    /** A connected pipe nobody writes to: the pause control waits forever, so its state never changes. */
+    private static InputStream idleStdin() {
+        try {
+            return new PipedInputStream(new PipedOutputStream());
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private String output() {
+        return out.toString(StandardCharsets.UTF_8);
     }
 
     private void respond(String path, String json) {
@@ -45,6 +69,11 @@ class NpcRunnerTest {
         respond("/g1/shop", "[{\"id\":\"hpot\",\"name\":\"Healing potion\",\"cost\":50}]");
     }
 
+    private static String solved(int lives, int turn) {
+        return "{\"success\":true,\"lives\":%d,\"gold\":%d,\"score\":%d,\"turn\":%d,\"message\":\"ok\"}"
+                .formatted(lives, turn, turn, turn);
+    }
+
     @Test
     void playsUntilGameOverWithoutRefetching() {
         startAndShop(1, 0);
@@ -53,12 +82,15 @@ class NpcRunnerTest {
         respond("/g1/solve/a1", "{\"success\":false,\"lives\":0,\"gold\":0,\"score\":10,\"turn\":1,"
                 + "\"message\":\"You were defeated on your last mission!\"}");
 
-        runner("").run(null);
+        runner().run(null);
 
         server.verify();
-        assertThat(out.toString(StandardCharsets.UTF_8)).isEqualTo("""
-                T1   ✗ Solve  Slay (Gamble, 40)                            −1 life         | lives 0 | level 2 | gold 0 | score 10 | turn 1
-                       You were defeated on your last mission!
+        assertThat(output()).isEqualTo("""
+                Turn 0 | Lives 1 | Level 2 | Gold 0 | Score 10 | ▶ running · Enter = pause
+                 ✗ Solve  Slay (Gamble, 40)
+                   You were defeated on your last mission!
+                   −1 life
+                Turn 1 | Lives 0 | Level 2 | Gold 0 | Score 10 | ▶ running · Enter = pause
                 Run ended: game over | score 10 | turn 1 | level 2 | lives 0 | gold 0 | requests used 4
                 """);
     }
@@ -71,13 +103,12 @@ class NpcRunnerTest {
         respond("/g1/shop/buy/hpot", "{\"shoppingSuccess\":true,\"gold\":10,\"lives\":2,\"level\":3,\"turn\":1}");
         respond("/g1/messages", "[]");
 
-        runner("").run(null);
+        runner().run(null);
 
         server.verify();
-        String output = out.toString(StandardCharsets.UTF_8);
-        assertThat(output).contains("T1   ✓ Buy    Healing potion").contains("−50 gold, +1 life")
-                .contains("| lives 2 | level 3 | gold 10 | score 10 | turn 1");
-        assertThat(output).endsWith("Run ended: no playable move | score 10 | turn 1 | level 3 | lives 2 | gold 10 | requests used 5\n");
+        assertThat(output()).contains(" ✓ Buy    Healing potion\n   −50 gold, +1 life\n")
+                .contains("Turn 1 | Lives 2 | Level 3 | Gold 10 | Score 10 |")
+                .endsWith("Run ended: no playable move | score 10 | turn 1 | level 3 | lives 2 | gold 10 | requests used 5\n");
     }
 
     @Test
@@ -85,32 +116,103 @@ class NpcRunnerTest {
         startAndShop(3, 0);
         server.expect(requestTo(BASE + "/g1/messages")).andRespond(withStatus(HttpStatus.NOT_FOUND));
 
-        runner("").run(null);
+        runner().run(null);
 
         server.verify();
-        assertThat(out.toString(StandardCharsets.UTF_8)).startsWith("Run ended: game expired | score 10 | turn 0");
+        assertThat(output()).endsWith("Run ended: game expired | score 10 | turn 0 | level 2 | lives 3 | gold 0 | requests used 3\n");
     }
 
     @Test
-    void checkpointYesRerunsTheSameStepAndEofDeclines() {
+    void longGamePlaysPast300RequestsWithNoPrompt() {
         startAndShop(3, 0);
-        String board = "[{\"adId\":\"a1\",\"message\":\"Slay\",\"reward\":40,\"expiresIn\":2,\"encrypted\":null,"
-                + "\"probability\":\"Sure thing\"}]";
-        // Requests: start, shop, then messages + solve per turn. Turn 149's solve is request 300, so
-        // the checkpoint hits before turn 150's messages; "y" re-runs that same fetch. Turn 199's solve
-        // is request 400, so the second checkpoint hits before turn 200's messages, and EOF declines.
-        for (int turn = 1; turn <= 199; turn++) {
-            respond("/g1/messages", board);
-            respond("/g1/solve/a1", "{\"success\":true,\"lives\":3,\"gold\":%d,\"score\":%d,\"turn\":%d,\"message\":\"ok\"}"
-                    .formatted(turn, turn, turn));
+        // 2 + 2 × 200 = 402 requests; the last solve ends the game.
+        for (int turn = 1; turn <= 200; turn++) {
+            respond("/g1/messages", SAFE_BOARD);
+            respond("/g1/solve/a1", solved(turn == 200 ? 0 : 3, turn));
         }
 
-        runner("y\n").run(null);
+        runner().run(null);
 
         server.verify();
-        String output = out.toString(StandardCharsets.UTF_8);
-        assertThat(output.split("Continue for 100 more requests\\? \\[y/N]", -1)).hasSize(3);
-        assertThat(output).contains("T150 ✓ Solve").contains("T199 ✓ Solve").doesNotContain("T200");
-        assertThat(output).endsWith("Run ended: budget exhausted | score 199 | turn 199 | level 2 | lives 3 | gold 199 | requests used 400\n");
+        assertThat(output()).doesNotContain("Continue").doesNotContain("budget")
+                .endsWith("Run ended: game over | score 200 | turn 200 | level 2 | lives 0 | gold 200 | requests used 402\n");
+    }
+
+    @Test
+    void pauseBetweenTurnsSendsNothingUntilResumed() throws Exception {
+        PipedOutputStream keyboard = new PipedOutputStream();
+        PauseControl pause = new PauseControl(new PipedInputStream(keyboard));
+        startAndShop(3, 0);
+        respond("/g1/messages", SAFE_BOARD);
+        // Enter is pressed while turn 1's solve is in flight: the solve still finishes and is logged.
+        server.expect(requestTo(BASE + "/g1/solve/a1")).andRespond(request -> {
+            pressEnter(keyboard);
+            spinUntil(pause::paused);
+            return withSuccess(solved(3, 1), MediaType.APPLICATION_JSON).createResponse(request);
+        });
+        respond("/g1/messages", SAFE_BOARD);
+        respond("/g1/solve/a1", solved(0, 2));
+
+        Thread game = new Thread(() -> runner(pause).run(null));
+        game.start();
+        spinUntil(() -> game.getState() == Thread.State.WAITING);
+        spinUntil(() -> output().contains("⏸ paused · Enter = resume")); // printed by the reader thread
+
+        assertThat(client.used()).as("start, shop, messages, solve; nothing more while paused").isEqualTo(4);
+        assertThat(output()).contains(" ✓ Solve  Slay (Sure thing, 40)").doesNotContain("Turn 2");
+
+        pressEnter(keyboard);
+        game.join(TimeUnit.SECONDS.toMillis(5));
+
+        server.verify();
+        String output = output();
+        assertThat(output.indexOf("⏸ paused")).isLessThan(output.lastIndexOf("▶ running · Enter = pause"));
+        assertThat(output).endsWith("Run ended: game over | score 2 | turn 2 | level 2 | lives 0 | gold 2 | requests used 6\n");
+    }
+
+    @Test
+    void pauseDuringMessagesFetchHoldsTheSolveUntilResumed() throws Exception {
+        PipedOutputStream keyboard = new PipedOutputStream();
+        PauseControl pause = new PauseControl(new PipedInputStream(keyboard));
+        startAndShop(3, 0);
+        // Enter is pressed while turn 1's messages fetch is in flight.
+        server.expect(requestTo(BASE + "/g1/messages")).andRespond(request -> {
+            pressEnter(keyboard);
+            spinUntil(pause::paused);
+            return withSuccess(SAFE_BOARD, MediaType.APPLICATION_JSON).createResponse(request);
+        });
+        respond("/g1/solve/a1", solved(0, 1));
+
+        Thread game = new Thread(() -> runner(pause).run(null));
+        game.start();
+        spinUntil(() -> game.getState() == Thread.State.WAITING);
+
+        assertThat(client.used()).as("start, shop, messages; no solve while paused").isEqualTo(3);
+        assertThat(output()).doesNotContain("Solve");
+
+        pressEnter(keyboard);
+        game.join(TimeUnit.SECONDS.toMillis(5));
+
+        server.verify();
+        assertThat(output()).contains(" ✓ Solve  Slay (Sure thing, 40)")
+                .endsWith("Run ended: game over | score 1 | turn 1 | level 2 | lives 0 | gold 1 | requests used 4\n");
+    }
+
+    private static void pressEnter(PipedOutputStream keyboard) {
+        try {
+            keyboard.write('\n');
+            keyboard.flush();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    /** Spins (no sleep) until the condition holds, failing after 5 s. */
+    private static void spinUntil(BooleanSupplier condition) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!condition.getAsBoolean()) {
+            assertThat(System.nanoTime()).as("condition should hold").isLessThan(deadline);
+            Thread.onSpinWait();
+        }
     }
 }

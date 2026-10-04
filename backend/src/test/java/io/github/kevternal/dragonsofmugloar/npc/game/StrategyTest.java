@@ -55,6 +55,31 @@ class StrategyTest {
     }
 
     @Test
+    void healthyOnAHardBoardBuysTheItemWithTheMostLevels() {
+        List<Ad> board = List.of(ad("r", "Risky", 300, 2), ad("d", "Impossible", 900, 1));
+        assertThat(Strategy.decide(stats(3, 300), board, SHOP)).contains(new Decision.Buy(ROCKET));
+    }
+
+    @Test
+    void mostLevelsTiesGoToTheCheaperThenShopOrder() {
+        ShopItem iron = new ShopItem("iron", "Iron Plating", 300);
+        ShopItem chain = new ShopItem("ch", "Chain mail", 250);
+        List<Ad> board = List.of(ad("r", "Risky", 300, 2));
+        assertThat(Strategy.decide(stats(3, 1000), board, List.of(ROCKET, iron, GAS, chain)))
+                .contains(new Decision.Buy(chain));
+        assertThat(Strategy.decide(stats(3, 1000), board, List.of(iron, ROCKET, GAS)))
+                .contains(new Decision.Buy(iron));
+    }
+
+    @Test
+    void carefulOnAHardBoardBuysTheCheapestLevelItem() {
+        ShopItem dearPotion = new ShopItem("hpot", "Healing potion", 400);
+        List<Ad> board = List.of(ad("r", "Risky", 300, 2), ad("g", "Gamble", 200, 1));
+        assertThat(Strategy.decide(stats(2, 300), board, List.of(ROCKET, dearPotion, CLAW)))
+                .contains(new Decision.Buy(CLAW));
+    }
+
+    @Test
     void hardBoardIgnoresUnknownAds() {
         List<Ad> board = List.of(ad("r", "Gamble", 300, 2), ad("u", "Brand new label", 900, 1));
         assertThat(Strategy.decide(stats(3, 100), board, SHOP)).contains(new Decision.Buy(CLAW));

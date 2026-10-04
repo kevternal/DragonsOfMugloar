@@ -11,7 +11,7 @@ public final class Strategy {
     /** The two sorts of strategies.md. */
     public enum SortMode { PLAY_IT_SAFE, FOR_GLORY }
 
-    /** Lives above this sort the For Glory! way and prefer levels over healing. */
+    /** Lives above this sort the For Glory! way and buy the level item with the most levels. */
     static final int CAREFUL_LIVES = 2;
     /** A board where every measured ad is at this risk level or higher is "hard". */
     static final int HARD_RISK_LEVEL = 3;
@@ -64,7 +64,9 @@ public final class Strategy {
      * <ol>
      *   <li>At 1 life with the life item affordable, buy it, even before a safe ad.</li>
      *   <li>At 2 lives with no safe ad and the life item affordable, buy it.</li>
-     *   <li>When every measured ad is risk 3 or higher and a level item is affordable, buy the cheapest.</li>
+     *   <li>When every measured ad is risk 3 or higher (win rate 40% or lower) and a level item is
+     *       affordable, buy one: while lives are above 2, the one with the most levels (ties: cheaper,
+     *       then shop order); otherwise the cheapest.</li>
      *   <li>Otherwise solve the top solvable ad: For Glory! while lives are above 2, else Play it safe.</li>
      *   <li>With no solvable ad, there is no playable move: empty.</li>
      * </ol>
@@ -84,8 +86,13 @@ public final class Strategy {
         boolean hardBoard = !measuredLevels.isEmpty()
                 && measuredLevels.stream().allMatch(level -> level >= HARD_RISK_LEVEL);
         if (hardBoard) {
+            // The shelf is already cost-then-API order, and the sort is stable, so ties keep it.
+            Comparator<ShopItem> pick = stats.lives() > CAREFUL_LIVES
+                    ? Comparator.comparingInt(ShopItem::levelsGained).reversed()
+                    : (a, b) -> 0;
             Optional<ShopItem> levelItem = shelf.stream()
                     .filter(item -> item.levelsGained() > 0 && item.affordable(stats.gold()))
+                    .sorted(pick)
                     .findFirst();
             if (levelItem.isPresent()) {
                 return Optional.of(new Decision.Buy(levelItem.get()));

@@ -14,8 +14,8 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 /**
- * AD-2: the only HTTP caller. Every call goes through {@link #send}: pacing, then the budget
- * check, then the request.
+ * AD-2: the only HTTP caller. Every call goes through {@link #send}: pacing, then the request.
+ * There is no request budget; one game plays until it ends.
  */
 public class MugloarClient {
 
@@ -23,7 +23,6 @@ public class MugloarClient {
     /** Python's default UA got 403 [V]; Java's default is [U], so send our own. */
     static final String USER_AGENT = "dragons-of-mugloar-npc/0.0.1";
     static final long MIN_SPACING_NANOS = TimeUnit.MILLISECONDS.toNanos(500);
-    static final int INITIAL_BUDGET = 300;
     /** AD-18: delays before the first and second retry of {@code GET messages}. */
     static final long[] RETRY_DELAYS_MS = {2000, 5000};
 
@@ -39,7 +38,6 @@ public class MugloarClient {
     private long lastStartNanos;
     private boolean anySent;
     private int used;
-    private int budget = INITIAL_BUDGET;
 
     public MugloarClient(RestClient.Builder builder, LongSupplier nanoClock, Sleeper sleeper) {
         this.rest = builder
@@ -111,11 +109,6 @@ public class MugloarClient {
         return send(() -> rest.post().uri("/{gameId}/shop/buy/{itemId}", gameId, itemId).retrieve().body(BuyDto.class));
     }
 
-    /** Raises the request budget by {@code requests}. */
-    public void grant(int requests) {
-        budget += requests;
-    }
-
     /** Requests sent so far. */
     public int used() {
         return used;
@@ -123,9 +116,6 @@ public class MugloarClient {
 
     private <T> T send(Supplier<T> request) {
         pace();
-        if (used >= budget) {
-            throw new BudgetExhaustedException(used);
-        }
         used++;
         lastStartNanos = nanoClock.getAsLong();
         anySent = true;

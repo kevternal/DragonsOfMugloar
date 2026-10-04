@@ -113,26 +113,6 @@ class MugloarClientTest {
     }
 
     @Test
-    void budgetStopsBeforeSendingAndGrantAddsMore() {
-        expectMessages(300, "[]");
-        for (int i = 0; i < 300; i++) {
-            client.messages("g1");
-        }
-        server.verify();
-        assertThat(client.used()).isEqualTo(300);
-
-        assertThatThrownBy(() -> client.messages("g1")).isInstanceOf(BudgetExhaustedException.class);
-        assertThat(client.used()).isEqualTo(300);
-
-        server.reset();
-        expectMessages(1, "[]");
-        client.grant(100);
-        client.messages("g1");
-        assertThat(client.used()).isEqualTo(301);
-        server.verify();
-    }
-
-    @Test
     void messagesRetriesTwiceAfter2And5Seconds() {
         server.expect(requestTo(MESSAGES)).andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
         server.expect(requestTo(MESSAGES)).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
