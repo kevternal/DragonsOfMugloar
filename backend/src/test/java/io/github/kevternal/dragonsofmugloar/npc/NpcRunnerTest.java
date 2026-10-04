@@ -35,7 +35,7 @@ class NpcRunnerTest {
 
     private final RestClient.Builder builder = RestClient.builder();
     private final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-    private final MugloarClient client = new MugloarClient(builder, System::nanoTime, millis -> { });
+    private final MugloarClient client = new MugloarClient(builder, millis -> { });
     private final ByteArrayOutputStream out = new ByteArrayOutputStream();
 
     private NpcRunner runner(PauseControl pause) {
@@ -136,6 +136,94 @@ class NpcRunnerTest {
         server.verify();
         assertThat(output()).doesNotContain("Continue").doesNotContain("budget")
                 .endsWith("Run ended: game over | score 200 | turn 200 | level 2 | lives 0 | gold 200 | requests used 402\n");
+    }
+
+    private static final String TWO_SAFE_BOARD = "[{\"adId\":\"a1\",\"message\":\"Slay\",\"reward\":40,\"expiresIn\":2,"
+            + "\"encrypted\":null,\"probability\":\"Sure thing\"},"
+            + "{\"adId\":\"a2\",\"message\":\"Guard\",\"reward\":30,\"expiresIn\":2,"
+            + "\"encrypted\":null,\"probability\":\"Piece of cake\"}]";
+
+    private void notFound(String path) {
+        server.expect(requestTo(BASE + path)).andRespond(withStatus(HttpStatus.NOT_FOUND)
+                .contentType(MediaType.TEXT_HTML).body("<html>Not Found</html>"));
+    }
+
+    @Test
+    void solve404RemembersTheAdAndDecidesAgainOnAReread() {
+        startAndShop(3, 0);
+        respond("/g1/messages", TWO_SAFE_BOARD);
+        notFound("/g1/solve/a1");
+        // a1 is still listed on the re-read, but it is never picked again.
+        respond("/g1/messages", TWO_SAFE_BOARD);
+        respond("/g1/solve/a2", solved(3, 1));
+        respond("/g1/messages", TWO_SAFE_BOARD);
+        respond("/g1/solve/a2", solved(0, 2));
+
+        runner().run(null);
+
+        server.verify();
+        assertThat(output()).contains(" ✓ Solve  Guard (Piece of cake, 30)").doesNotContain("Slay (")
+                .endsWith("Run ended: game over | score 2 | turn 2 | level 2 | lives 0 | gold 2 | requests used 8\n");
+    }
+
+    @Test
+    void solve404ThenReread404EndsWithBoardUnavailable() {
+        startAndShop(3, 0);
+        respond("/g1/messages", TWO_SAFE_BOARD);
+        notFound("/g1/solve/a1");
+        notFound("/g1/messages");
+
+        runner().run(null);
+
+        server.verify();
+        assertThat(output()).endsWith("Run ended: board unavailable | score 10 | turn 0 | level 2 | lives 3 | gold 0 | requests used 5\n");
+    }
+
+    @Test
+    void solve404ThenNothingPlayableEndsWithBoardUnavailable() {
+        startAndShop(3, 0);
+        respond("/g1/messages", SAFE_BOARD);
+        notFound("/g1/solve/a1");
+        respond("/g1/messages", SAFE_BOARD);
+
+        runner().run(null);
+
+        server.verify();
+        assertThat(output()).endsWith("Run ended: board unavailable | score 10 | turn 0 | level 2 | lives 3 | gold 0 | requests used 5\n");
+    }
+
+    @Test
+    void buy404DropsTheItemAndDecidesAgainOnAReread() {
+        startAndShop(1, 60);
+        respond("/g1/messages", SAFE_BOARD);
+        notFound("/g1/shop/buy/hpot");
+        respond("/g1/messages", SAFE_BOARD);
+        respond("/g1/solve/a1", solved(0, 1));
+
+        runner().run(null);
+
+        server.verify();
+        assertThat(output()).contains(" ✓ Solve  Slay (Sure thing, 40)")
+                .endsWith("Run ended: game over | score 1 | turn 1 | level 2 | lives 0 | gold 1 | requests used 6\n");
+    }
+
+    @Test
+    void baitSightingIsLoggedWithTheStateEstimateFromSuccessfulSolves() {
+        startAndShop(3, 0);
+        respond("/g1/messages", "[{\"adId\":\"s1\",\"message\":\"Steal cows delivery to Ann\",\"reward\":40,"
+                + "\"expiresIn\":2,\"encrypted\":null,\"probability\":\"Sure thing\"}]");
+        respond("/g1/solve/s1", solved(3, 1));
+        respond("/g1/messages", "[{\"adId\":\"b1\",\"message\":\"Steal super awesome diamond ring from Bob\","
+                + "\"reward\":150,\"expiresIn\":2,\"encrypted\":null,\"probability\":\"Sure thing\"},"
+                + SAFE_BOARD.substring(1));
+        respond("/g1/solve/a1", solved(0, 2));
+
+        runner().run(null);
+
+        server.verify();
+        assertThat(output()).containsOnlyOnce(" ! Bait   1 ad on the board | state estimate -2\n")
+                .doesNotContain("diamond ring from Bob (")
+                .contains(" ✓ Solve  Slay (Sure thing, 40)");
     }
 
     @Test

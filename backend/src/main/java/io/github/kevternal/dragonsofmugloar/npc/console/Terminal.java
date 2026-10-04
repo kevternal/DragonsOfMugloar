@@ -124,6 +124,20 @@ public class Terminal implements PauseControl.Listener {
         }
     }
 
+    /** One line above the panel, and in the history file, for a board that holds bait. */
+    public synchronized void bait(long count, int stateEstimate) {
+        String line = formatBait(count, stateEstimate);
+        refresh(List.of(line));
+        if (history != null) {
+            history.println(line);
+        }
+    }
+
+    static String formatBait(long count, int stateEstimate) {
+        return " ! Bait   %d %s on the board | state estimate %d".formatted(count, count == 1 ? "ad" : "ads",
+                stateEstimate);
+    }
+
     @Override
     public synchronized void toggled(boolean paused) {
         if (drawnHeight > 0) {

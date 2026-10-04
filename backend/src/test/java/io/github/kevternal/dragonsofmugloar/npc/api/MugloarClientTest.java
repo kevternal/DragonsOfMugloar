@@ -15,7 +15,6 @@ import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,26 +34,13 @@ class MugloarClientTest {
 
     private MockRestServiceServer server;
     private MugloarClient client;
-    private long nowNanos = 1_000_000_000L;
     private final List<Long> sleeps = new ArrayList<>();
-    private final List<Long> requestStarts = new ArrayList<>();
 
     @BeforeEach
     void setUp() {
         RestClient.Builder builder = RestClient.builder();
         server = MockRestServiceServer.bindTo(builder).build();
-        client = new MugloarClient(builder, () -> nowNanos, millis -> {
-            sleeps.add(millis);
-            nowNanos += TimeUnit.MILLISECONDS.toNanos(millis);
-        });
-    }
-
-    private void expectMessages(int count, String body) {
-        server.expect(times(count), requestTo(MESSAGES)).andExpect(method(HttpMethod.GET))
-                .andRespond(request -> {
-                    requestStarts.add(nowNanos);
-                    return withSuccess(body, MediaType.APPLICATION_JSON).createResponse(request);
-                });
+        client = new MugloarClient(builder, sleeps::add);
     }
 
     @Test
@@ -94,21 +80,15 @@ class MugloarClientTest {
     }
 
     @Test
-    void requestStartsAreAtLeast500msApart() {
-        expectMessages(4, "[]");
+    void requestsGoOutBackToBackWithoutSpacing() {
+        server.expect(times(4), requestTo(MESSAGES)).andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
 
-        client.messages("g1");
-        client.messages("g1");
-        nowNanos += TimeUnit.MILLISECONDS.toNanos(300);
-        client.messages("g1");
-        nowNanos += TimeUnit.MILLISECONDS.toNanos(800);
-        client.messages("g1");
-
-        assertThat(sleeps).containsExactly(500L, 200L);
-        for (int i = 1; i < requestStarts.size(); i++) {
-            assertThat(requestStarts.get(i) - requestStarts.get(i - 1))
-                    .isGreaterThanOrEqualTo(TimeUnit.MILLISECONDS.toNanos(500));
+        for (int i = 0; i < 4; i++) {
+            client.messages("g1");
         }
+
+        assertThat(sleeps).isEmpty();
+        assertThat(client.used()).isEqualTo(4);
         server.verify();
     }
 

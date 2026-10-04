@@ -44,20 +44,28 @@ public final class Risk {
         };
     }
 
-    /** Integer percent, so comparisons have no float ties. 70 for level 2 is the user's choice. */
-    public static int winRatePct(int level) {
-        return switch (level) {
-            case 1 -> 100;
-            case 2 -> 70;
-            case 3 -> 40;
-            case 4 -> 10;
-            default -> throw new IllegalArgumentException("Unknown risk level " + level);
-        };
+    // Win rate per label in integer percent, from 5,257 non-bait live solves on 2026-10-04 [V]
+    // (strategy-findings.md, "Win rate per label, refreshed [V, 2026-10-04]").
+    private static final Map<String, Integer> WIN_PCT = Map.ofEntries(
+            Map.entry("Sure thing", 100),
+            Map.entry("Piece of cake", 95),
+            Map.entry("Walk in the park", 87),
+            Map.entry("Quite likely", 72),
+            Map.entry("Hmmm....", 63),
+            Map.entry("Gamble", 55),
+            Map.entry("Risky", 41),
+            Map.entry("Rather detrimental", 37),
+            Map.entry("Playing with fire", 31),
+            Map.entry("Suicide mission", 6),
+            Map.entry("Impossible", 0));
+
+    /** Integer percent, so comparisons have no float ties; 0 for an unknown label. */
+    public static int winPct(String probability) {
+        return WIN_PCT.getOrDefault(probability, 0);
     }
 
-    /** {@code reward × winRatePct}, percent-scaled; null when the risk is unknown. */
-    public static Integer expectedReward(Ad ad) {
-        Integer level = riskLevel(ad);
-        return level == null ? null : ad.reward() * winRatePct(level);
+    /** An unsolvable ad's label is still encoded, so it scores 0. */
+    public static int winPct(Ad ad) {
+        return ad.solvable() ? winPct(ad.probability()) : 0;
     }
 }

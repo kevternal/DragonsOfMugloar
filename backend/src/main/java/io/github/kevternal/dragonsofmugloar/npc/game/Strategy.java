@@ -3,53 +3,38 @@ package io.github.kevternal.dragonsofmugloar.npc.game;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
-/** The NPC's decision rule, as pure functions. Sorting is ported from AD-4 {@code sortJobs}. */
+/** The NPC's decision rule, decision tree v3.2, as pure functions (strategy-findings.md, "The decision tree"). */
 public final class Strategy {
 
-    /** The two sorts of strategies.md. */
-    public enum SortMode { PLAY_IT_SAFE, FOR_GLORY }
+    /**
+     * Bait has only been seen at state −10; the guard keeps the estimate at −8 or higher [V]
+     * (strategy-findings.md, "Bait ads").
+     */
+    static final int STATE_FLOOR = -8;
+    /** Step 4: with this much gold at 2 lives and no safe ad, a +2 item; from 150, a +1 item. */
+    static final int GOLD_TWO_LIVES_PLUS2 = 350;
+    static final int GOLD_PLUS1 = 150;
+    /** Step 5: buy a +2 item from this much gold while some playable ad is not safe. */
+    static final int GOLD_PROACTIVE_PLUS2 = 400;
+    /**
+     * Step 6: on an all-deadly board, a +2 item from 350 gold keeps 50 for a potion [V, n=1]
+     * (strategy-findings.md, "Tree v3.1: best run").
+     */
+    static final int GOLD_DEADLY_PLUS2 = 350;
+    /** Step 7b: a lost life costs a potion (50) plus the turn, valued at the best safe reward. */
+    static final int POTION_LOSS = 50;
 
-    /** Lives above this sort the For Glory! way and buy the level item with the most levels. */
-    static final int CAREFUL_LIVES = 2;
-    /** A board where every measured ad is at this risk level or higher is "hard". */
-    static final int HARD_RISK_LEVEL = 3;
-
-    private static final Comparator<Ad> REWARD_THEN_EXPIRY =
-            Comparator.comparing((Ad ad) -> Risk.expectedReward(ad), Comparator.reverseOrder())
-                    .thenComparingInt(Ad::expiresIn);
-
-    private static final Comparator<Ad> PLAY_IT_SAFE =
-            Comparator.comparing((Ad ad) -> Risk.riskLevel(ad)).thenComparing(REWARD_THEN_EXPIRY)
-                    .thenComparing(Ad::adId);
-
-    private static final Comparator<Ad> FOR_GLORY =
-            Comparator.comparing((Ad ad) -> Risk.riskLevel(ad) == 4).thenComparing(REWARD_THEN_EXPIRY)
-                    .thenComparing(Ad::adId);
-
-    private static final Comparator<Ad> UNKNOWN_RISK =
-            Comparator.comparingInt(Ad::reward).reversed().thenComparingInt(Ad::expiresIn)
+    /** Step 7: lowest tier (unknown last), then highest reward, then soonest expiry. */
+    private static final Comparator<Ad> SAFEST =
+            Comparator.comparingInt((Ad ad) -> tierRank(ad))
+                    .thenComparing(Comparator.comparingInt(Ad::reward).reversed())
+                    .thenComparingInt(Ad::expiresIn)
                     .thenComparing(Ad::adId);
 
     private Strategy() {
-    }
-
-    /**
-     * Returns a new list; never filters. Measured ads come first, sorted by the mode's keys then
-     * {@code adId}. Unknown-risk ads come after every measured ad, deadly included, by reward
-     * descending, {@code expiresIn} ascending, then {@code adId}.
-     */
-    public static List<Ad> sortJobs(List<Ad> board, SortMode mode) {
-        List<Ad> measured = new ArrayList<>();
-        List<Ad> unknown = new ArrayList<>();
-        for (Ad ad : board) {
-            (Risk.riskLevel(ad) == null ? unknown : measured).add(ad);
-        }
-        measured.sort(mode == SortMode.PLAY_IT_SAFE ? PLAY_IT_SAFE : FOR_GLORY);
-        unknown.sort(UNKNOWN_RISK);
-        measured.addAll(unknown);
-        return measured;
     }
 
     /** Cost ascending, then API response order (the sort is stable). */
@@ -60,49 +45,126 @@ public final class Strategy {
     }
 
     /**
-     * The decision rule; the first match wins:
+     * Tree v3.2; the first match wins:
      * <ol>
-     *   <li>At 1 life with the life item affordable, buy it, even before a safe ad.</li>
-     *   <li>At 2 lives with no safe ad and the life item affordable, buy it.</li>
-     *   <li>When every measured ad is risk 3 or higher (win rate 40% or lower) and a level item is
-     *       affordable, buy one: while lives are above 2, the one with the most levels (ties: cheaper,
-     *       then shop order); otherwise the cheapest.</li>
-     *   <li>Otherwise solve the top solvable ad: For Glory! while lives are above 2, else Play it safe.</li>
-     *   <li>With no solvable ad, there is no playable move: empty.</li>
+     *   <li>Drop bait.</li>
+     *   <li>Drop steals when one more would take the state estimate below −8, or bait is on the board,
+     *       unless only steals are left.</li>
+     *   <li>At 1 life with the potion affordable, buy it.</li>
+     *   <li>At 2 lives with no safe playable ad: 350+ gold, the least-bought +2 item; else 150+, the
+     *       least-bought +1 item.</li>
+     *   <li>At 2+ lives with 400+ gold and some playable ad not safe, the least-bought +2 item.</li>
+     *   <li>At 2+ lives on an all-deadly board: 350+ gold, a +2 item; else 150+, a +1 item.</li>
+     *   <li>Gold below the potion's cost: solve the safest ad.</li>
+     *   <li>7b. Otherwise solve the best value ad (see {@link #value}).</li>
+     *   <li>No playable ad: empty.</li>
      * </ol>
+     * Steps 4–6 need at least one playable ad: a purchase can't help an empty board.
+     *
+     * @param board         the board with ads already known to be gone removed
+     * @param purchases     successful buys so far, by item id
+     * @param stateEstimate the state reputation estimate, the sum of {@link AdKind#stateDelta} over successful solves
      */
-    public static Optional<Decision> decide(Stats stats, List<Ad> board, List<ShopItem> shop) {
-        List<ShopItem> shelf = shelfOrder(shop);
-        Optional<ShopItem> lifeItem = shelf.stream()
-                .filter(item -> item.livesGained() > 0 && item.affordable(stats.gold()))
-                .findFirst();
-        boolean safeAdOnBoard = board.stream().anyMatch(ad -> Risk.riskTier(ad) == Risk.Tier.SAFE);
+    public static Optional<Decision> decide(Stats stats, List<Ad> board, List<ShopItem> shop,
+                                            Map<String, Integer> purchases, int stateEstimate) {
+        List<Ad> playable = playable(board, stateEstimate);
+        boolean anyPlayable = !playable.isEmpty();
+        boolean anySafe = playable.stream().anyMatch(ad -> Risk.riskTier(ad) == Risk.Tier.SAFE);
+        boolean allDeadly = anyPlayable && playable.stream().allMatch(ad -> Risk.riskTier(ad) == Risk.Tier.DEADLY);
+        int gold = stats.gold();
+        int lives = stats.lives();
+        Optional<ShopItem> potion = shelfOrder(shop).stream().filter(item -> item.livesGained() > 0).findFirst();
 
-        if (lifeItem.isPresent() && (stats.lives() == 1 || (stats.lives() == 2 && !safeAdOnBoard))) {
-            return Optional.of(new Decision.Buy(lifeItem.get()));
+        // 3. Heal only at 1 life.
+        if (lives == 1 && potion.isPresent() && potion.get().affordable(gold)) {
+            return buy(potion.get());
         }
-
-        List<Integer> measuredLevels = board.stream().map(Risk::riskLevel).filter(level -> level != null).toList();
-        boolean hardBoard = !measuredLevels.isEmpty()
-                && measuredLevels.stream().allMatch(level -> level >= HARD_RISK_LEVEL);
-        if (hardBoard) {
-            // The shelf is already cost-then-API order, and the sort is stable, so ties keep it.
-            Comparator<ShopItem> pick = stats.lives() > CAREFUL_LIVES
-                    ? Comparator.comparingInt(ShopItem::levelsGained).reversed()
-                    : (a, b) -> 0;
-            Optional<ShopItem> levelItem = shelf.stream()
-                    .filter(item -> item.levelsGained() > 0 && item.affordable(stats.gold()))
-                    .sorted(pick)
-                    .findFirst();
-            if (levelItem.isPresent()) {
-                return Optional.of(new Decision.Buy(levelItem.get()));
+        // 4. At 2 lives with no safe ad, a level beats a potion.
+        if (lives == 2 && anyPlayable && !anySafe) {
+            Optional<Decision> level = levelItem(shop, purchases, gold, GOLD_TWO_LIVES_PLUS2);
+            if (level.isPresent()) {
+                return level;
             }
         }
+        // 5. Proactive +2 while some playable ad is not safe.
+        if (lives >= 2 && gold >= GOLD_PROACTIVE_PLUS2 && playable.stream().anyMatch(ad -> Risk.riskTier(ad) != Risk.Tier.SAFE)) {
+            Optional<ShopItem> item = leastBought(shop, purchases, 2, gold);
+            if (item.isPresent()) {
+                return buy(item.get());
+            }
+        }
+        // 6. All deadly: level up rather than gamble, keeping 50 for a potion.
+        if (allDeadly && lives >= 2) {
+            Optional<Decision> level = levelItem(shop, purchases, gold, GOLD_DEADLY_PLUS2);
+            if (level.isPresent()) {
+                return level;
+            }
+        }
+        if (!anyPlayable) {
+            return Optional.empty();
+        }
+        // 7. Broke: play safe until a potion is affordable.
+        if (potion.isPresent() && gold < potion.get().cost()) {
+            return Optional.of(new Decision.Solve(playable.stream().min(SAFEST).orElseThrow()));
+        }
+        // 7b. Best value, where a loss costs a potion and a turn.
+        int lossCost = POTION_LOSS + playable.stream()
+                .filter(ad -> Risk.riskTier(ad) == Risk.Tier.SAFE)
+                .mapToInt(Ad::reward).max().orElse(0);
+        Comparator<Ad> byValue = Comparator.comparingLong((Ad ad) -> value(ad, lossCost)).reversed()
+                .thenComparing(Comparator.comparingInt((Ad ad) -> Risk.winPct(ad)).reversed())
+                .thenComparingInt(Ad::expiresIn)
+                .thenComparing(Ad::adId);
+        return Optional.of(new Decision.Solve(playable.stream().min(byValue).orElseThrow()));
+    }
 
-        SortMode mode = stats.lives() > CAREFUL_LIVES ? SortMode.FOR_GLORY : SortMode.PLAY_IT_SAFE;
-        return sortJobs(board, mode).stream()
-                .filter(Ad::solvable)
-                .findFirst()
-                .map(Decision.Solve::new);
+    /** {@code winPct × reward − (100 − winPct) × lossCost}, integer maths. */
+    static long value(Ad ad, int lossCost) {
+        int pct = Risk.winPct(ad);
+        return (long) pct * ad.reward() - (long) (100 - pct) * lossCost;
+    }
+
+    /** Steps 1–2: solvable ads without bait, and without steals when the guard is on and anything else is left. */
+    static List<Ad> playable(List<Ad> board, int stateEstimate) {
+        boolean baitOnBoard = board.stream().anyMatch(AdKind::isBait);
+        List<Ad> candidates = board.stream().filter(Ad::solvable).filter(ad -> !AdKind.isBait(ad)).toList();
+        boolean guard = baitOnBoard || stateEstimate + AdKind.STEAL_STATE_DELTA < STATE_FLOOR;
+        if (!guard) {
+            return candidates;
+        }
+        List<Ad> noSteals = candidates.stream().filter(ad -> !AdKind.isSteal(ad)).toList();
+        return noSteals.isEmpty() ? candidates : noSteals;
+    }
+
+    /** At {@code plus2Gold}+ gold the least-bought +2 item; else at 150+ the least-bought +1 item. */
+    private static Optional<Decision> levelItem(List<ShopItem> shop, Map<String, Integer> purchases, int gold,
+                                                int plus2Gold) {
+        if (gold >= plus2Gold) {
+            Optional<ShopItem> item = leastBought(shop, purchases, 2, gold);
+            if (item.isPresent()) {
+                return buy(item.get());
+            }
+        }
+        if (gold >= GOLD_PLUS1) {
+            return leastBought(shop, purchases, 1, gold).map(Decision.Buy::new);
+        }
+        return Optional.empty();
+    }
+
+    /** The affordable item granting {@code levels} levels bought least often; ties keep shop (API) order. */
+    static Optional<ShopItem> leastBought(List<ShopItem> shop, Map<String, Integer> purchases, int levels, int gold) {
+        return shop.stream()
+                .filter(item -> item.levelsGained() == levels && item.affordable(gold))
+                .min(Comparator.comparingInt(item -> purchases.getOrDefault(item.id(), 0)));
+    }
+
+    private static Optional<Decision> buy(ShopItem item) {
+        return Optional.of(new Decision.Buy(item));
+    }
+
+    /** Safe 1 … deadly 4; unknown after every known tier. */
+    private static int tierRank(Ad ad) {
+        Integer level = Risk.riskLevel(ad);
+        return level == null ? 5 : level;
     }
 }

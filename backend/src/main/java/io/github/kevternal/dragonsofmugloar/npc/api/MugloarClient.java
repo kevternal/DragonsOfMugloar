@@ -2,8 +2,6 @@ package io.github.kevternal.dragonsofmugloar.npc.api;
 
 import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
-import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 import org.springframework.http.HttpStatus;
@@ -14,15 +12,14 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 /**
- * AD-2: the only HTTP caller. Every call goes through {@link #send}: pacing, then the request.
- * There is no request budget; one game plays until it ends.
+ * AD-2: the only HTTP caller. Every call goes through {@link #send}. There is no request spacing
+ * and no request budget: requests go out as fast as the server answers, and one game plays until it ends.
  */
 public class MugloarClient {
 
     static final String BASE_URL = "https://dragonsofmugloar.com/api/v2";
     /** Python's default UA got 403 [V]; Java's default is [U], so send our own. */
     static final String USER_AGENT = "dragons-of-mugloar-npc/0.0.1";
-    static final long MIN_SPACING_NANOS = TimeUnit.MILLISECONDS.toNanos(500);
     /** AD-18: delays before the first and second retry of {@code GET messages}. */
     static final long[] RETRY_DELAYS_MS = {2000, 5000};
 
@@ -33,13 +30,10 @@ public class MugloarClient {
     }
 
     private final RestClient rest;
-    private final LongSupplier nanoClock;
     private final Sleeper sleeper;
-    private long lastStartNanos;
-    private boolean anySent;
     private int used;
 
-    public MugloarClient(RestClient.Builder builder, LongSupplier nanoClock, Sleeper sleeper) {
+    public MugloarClient(RestClient.Builder builder, Sleeper sleeper) {
         this.rest = builder
                 .baseUrl(BASE_URL)
                 .defaultHeader("User-Agent", USER_AGENT)
@@ -48,16 +42,15 @@ public class MugloarClient {
                     throw new MugloarApiException(MugloarApiException.Kind.HTTP, status, "HTTP " + status, null);
                 })
                 .build();
-        this.nanoClock = nanoClock;
         this.sleeper = sleeper;
     }
 
-    /** The production client: 5 s connect and 10 s read timeouts, the system clock, real sleeps. */
+    /** The production client: 5 s connect and 10 s read timeouts, real sleeps. */
     public static MugloarClient create() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(Duration.ofSeconds(5));
         factory.setReadTimeout(Duration.ofSeconds(10));
-        return new MugloarClient(RestClient.builder().requestFactory(factory), System::nanoTime, millis -> {
+        return new MugloarClient(RestClient.builder().requestFactory(factory), millis -> {
             try {
                 Thread.sleep(millis);
             } catch (InterruptedException e) {
@@ -115,10 +108,7 @@ public class MugloarClient {
     }
 
     private <T> T send(Supplier<T> request) {
-        pace();
         used++;
-        lastStartNanos = nanoClock.getAsLong();
-        anySent = true;
         try {
             return request.get();
         } catch (MugloarApiException e) {
@@ -127,17 +117,6 @@ public class MugloarClient {
             throw new MugloarApiException(MugloarApiException.Kind.NETWORK, null, e.getMessage(), e);
         } catch (RestClientException e) {
             throw new MugloarApiException(MugloarApiException.Kind.HTTP, null, e.getMessage(), e);
-        }
-    }
-
-    /** At least 500 ms between request starts, on a monotonic clock. */
-    private void pace() {
-        if (!anySent) {
-            return;
-        }
-        long waitNanos = MIN_SPACING_NANOS - (nanoClock.getAsLong() - lastStartNanos);
-        if (waitNanos > 0) {
-            sleeper.sleep(TimeUnit.NANOSECONDS.toMillis(waitNanos + TimeUnit.MILLISECONDS.toNanos(1) - 1));
         }
     }
 }

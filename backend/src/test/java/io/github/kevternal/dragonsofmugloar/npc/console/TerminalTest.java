@@ -208,6 +208,30 @@ class TerminalTest {
     }
 
     @Test
+    void baitLineGoesToTheTerminalAndTheHistory(@TempDir Path dir) throws IOException {
+        Path historyDir = dir.resolve("games-history");
+        Terminal terminal = new Terminal(new PrintStream(bytes, true, StandardCharsets.UTF_8), false, historyDir, START);
+        terminal.status(SOLVE.before());
+        terminal.startHistory("abc123");
+        terminal.bait(2, -10);
+        terminal.summary("game over", SOLVE.before(), 3);
+
+        assertThat(Terminal.formatBait(1, 0)).isEqualTo(" ! Bait   1 ad on the board | state estimate 0");
+        assertThat(output()).isEqualTo("""
+                Turn 12 | Lives 3 | Level 4 | Gold 79 | Score 818 | ▶ running · Enter = pause
+                 ! Bait   2 ads on the board | state estimate -10
+                Turn 12 | Lives 3 | Level 4 | Gold 79 | Score 818 | ▶ running · Enter = pause
+                Run ended: game over | score 818 | turn 12 | level 4 | lives 3 | gold 79 | requests used 3
+                """);
+        assertThat(Files.readAllLines(historyDir.resolve("2026-10-04_14-05-09-abc123.txt"), StandardCharsets.UTF_8))
+                .containsExactly(
+                        "Game abc123 | started 2026-10-04T14:05:09",
+                        "Turn 12 | Lives 3 | Level 4 | Gold 79 | Score 818",
+                        " ! Bait   2 ads on the board | state estimate -10",
+                        "Run ended: game over | score 818 | turn 12 | level 4 | lives 3 | gold 79 | requests used 3");
+    }
+
+    @Test
     void noHistoryDirMeansNoFile(@TempDir Path dir) throws IOException {
         Terminal terminal = terminal(false);
         terminal.startHistory("abc123");
