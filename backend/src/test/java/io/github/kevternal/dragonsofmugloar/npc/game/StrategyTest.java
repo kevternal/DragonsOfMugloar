@@ -238,9 +238,4 @@ class StrategyTest {
         assertThat(Strategy.decide(stats(1, 1000), List.of(risky), List.of(mystery), Map.of(), 0))
                 .isEqualTo(solve(risky));
     }
-
-    @Test
-    void shelfOrderIsCostThenApiOrder() {
-        assertThat(Strategy.shelfOrder(SHOP)).containsExactly(POTION, CLAW_1, GAS_1, CLAW_2, FIRE_2, IRON_2);
-    }
 }

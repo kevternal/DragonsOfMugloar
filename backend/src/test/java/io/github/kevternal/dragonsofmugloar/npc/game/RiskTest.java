@@ -14,13 +14,13 @@ class RiskTest {
 
     @ParameterizedTest
     @CsvSource({
-            "Piece of cake, SAFE, 1", "Sure thing, SAFE, 1",
-            "Walk in the park, MODERATE, 2", "Quite likely, MODERATE, 2", "Hmmm...., MODERATE, 2",
-            "Risky, RISKY, 3", "Gamble, RISKY, 3", "Rather detrimental, RISKY, 3",
-            "Playing with fire, DEADLY, 4", "Suicide mission, DEADLY, 4", "Impossible, DEADLY, 4"})
-    void everyObservedLabelHasItsTierAndLevel(String label, Risk.Tier tier, int level) {
+            "Piece of cake, SAFE", "Sure thing, SAFE",
+            "Walk in the park, MODERATE", "Quite likely, MODERATE", "Hmmm...., MODERATE",
+            "Risky, RISKY", "Gamble, RISKY", "Rather detrimental, RISKY",
+            "Playing with fire, DEADLY", "Suicide mission, DEADLY", "Impossible, DEADLY"})
+    void everyObservedLabelHasItsTier(String label, Risk.Tier tier) {
         assertThat(Risk.riskTier(label)).isEqualTo(tier);
-        assertThat(Risk.riskLevel(ad(label, 1))).isEqualTo(level);
+        assertThat(Risk.riskTier(ad(label, 1))).isEqualTo(tier);
     }
 
     @ParameterizedTest
@@ -34,9 +34,9 @@ class RiskTest {
     }
 
     @Test
-    void unknownLabelHasNoLevelAndScoresZero() {
+    void unknownLabelIsUnknownAndScoresZero() {
         assertThat(Risk.riskTier("Totally new")).isEqualTo(Risk.Tier.UNKNOWN);
-        assertThat(Risk.riskLevel(ad("Totally new", 10))).isNull();
+        assertThat(Risk.riskTier(ad("Totally new", 10))).isEqualTo(Risk.Tier.UNKNOWN);
         assertThat(Risk.winPct("Totally new")).isZero();
     }
 

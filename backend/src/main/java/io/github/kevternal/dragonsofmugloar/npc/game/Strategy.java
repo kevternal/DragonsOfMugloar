@@ -1,6 +1,5 @@
 package io.github.kevternal.dragonsofmugloar.npc.game;
 
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -30,21 +29,14 @@ public final class Strategy {
      */
     static final int LOSS_BASE = 75;
 
-    /** Step 7: lowest tier (unknown last), then highest reward, then soonest expiry. */
+    /** Step 7: lowest tier (unknown last, by enum order), then highest reward, then soonest expiry. */
     private static final Comparator<Ad> SAFEST =
-            Comparator.comparingInt((Ad ad) -> tierRank(ad))
+            Comparator.comparing((Ad ad) -> Risk.riskTier(ad))
                     .thenComparing(Comparator.comparingInt(Ad::reward).reversed())
                     .thenComparingInt(Ad::expiresIn)
                     .thenComparing(Ad::adId);
 
     private Strategy() {
-    }
-
-    /** Cost ascending, then API response order (the sort is stable). */
-    public static List<ShopItem> shelfOrder(List<ShopItem> items) {
-        List<ShopItem> sorted = new ArrayList<>(items);
-        sorted.sort(Comparator.comparingInt(ShopItem::cost));
-        return sorted;
     }
 
     /**
@@ -72,15 +64,17 @@ public final class Strategy {
         List<Ad> playable = playable(board, stateEstimate);
         boolean anyPlayable = !playable.isEmpty();
         boolean anySafe = playable.stream().anyMatch(ad -> Risk.riskTier(ad) == Risk.Tier.SAFE);
+        boolean anyUnsafe = playable.stream().anyMatch(ad -> Risk.riskTier(ad) != Risk.Tier.SAFE);
         boolean allDeadly = anyPlayable && playable.stream().allMatch(ad -> Risk.riskTier(ad) == Risk.Tier.DEADLY);
         int gold = stats.gold();
         int lives = stats.lives();
-        Optional<ShopItem> potion = shelfOrder(shop).stream().filter(item -> item.livesGained() > 0).findFirst();
+        Optional<ShopItem> potion = cheapestPotion(shop);
 
         // 3. Heal only at 1 life.
         if (lives == 1 && potion.isPresent() && potion.get().affordable(gold)) {
             return buy(potion.get());
         }
+
         // 4. At 2 lives with no safe ad, a level beats a potion.
         if (lives == 2 && anyPlayable && !anySafe) {
             Optional<Decision> level = levelItem(shop, purchases, gold, GOLD_TWO_LIVES_PLUS2);
@@ -88,13 +82,15 @@ public final class Strategy {
                 return level;
             }
         }
+
         // 5. Proactive +2 while some playable ad is not safe.
-        if (lives >= 2 && gold >= GOLD_PROACTIVE_PLUS2 && playable.stream().anyMatch(ad -> Risk.riskTier(ad) != Risk.Tier.SAFE)) {
-            Optional<ShopItem> item = leastBought(shop, purchases, 2, gold);
-            if (item.isPresent()) {
-                return buy(item.get());
+        if (lives >= 2 && anyUnsafe) {
+            Optional<Decision> level = levelItem(shop, purchases, gold, GOLD_PROACTIVE_PLUS2);
+            if (level.isPresent()) {
+                return level;
             }
         }
+
         // 6. All deadly: level up rather than gamble, keeping 50 for a potion.
         if (allDeadly && lives >= 2) {
             Optional<Decision> level = levelItem(shop, purchases, gold, GOLD_DEADLY_PLUS2);
@@ -102,14 +98,22 @@ public final class Strategy {
                 return level;
             }
         }
+
         if (!anyPlayable) {
             return Optional.empty();
         }
+
         // 7. Broke: play safe until a potion is affordable.
         if (potion.isPresent() && gold < potion.get().cost()) {
             return Optional.of(new Decision.Solve(playable.stream().min(SAFEST).orElseThrow()));
         }
-        // 7b. Best value, where a loss costs LOSS_BASE plus a turn (valued at the best safe reward).
+
+        // 7b. Best value.
+        return Optional.of(new Decision.Solve(bestValue(playable)));
+    }
+
+    /** The highest {@link #value}, where a loss costs LOSS_BASE plus a turn (valued at the best safe reward). */
+    private static Ad bestValue(List<Ad> playable) {
         int lossCost = LOSS_BASE + playable.stream()
                 .filter(ad -> Risk.riskTier(ad) == Risk.Tier.SAFE)
                 .mapToInt(Ad::reward).max().orElse(0);
@@ -117,7 +121,7 @@ public final class Strategy {
                 .thenComparing(Comparator.comparingInt((Ad ad) -> Risk.winPct(ad)).reversed())
                 .thenComparingInt(Ad::expiresIn)
                 .thenComparing(Ad::adId);
-        return Optional.of(new Decision.Solve(playable.stream().min(byValue).orElseThrow()));
+        return playable.stream().min(byValue).orElseThrow();
     }
 
     /** {@code winPct × reward − (100 − winPct) × lossCost}, integer maths. */
@@ -134,6 +138,7 @@ public final class Strategy {
         if (!guard) {
             return candidates;
         }
+
         List<Ad> noSteals = candidates.stream().filter(ad -> !AdKind.isSteal(ad)).toList();
         return noSteals.isEmpty() ? candidates : noSteals;
     }
@@ -148,23 +153,22 @@ public final class Strategy {
         if (gold < plus2Gold) {
             return Optional.empty();
         }
-        return leastBought(shop, purchases, 2, gold).map(Decision.Buy::new);
+
+        // Ties keep shop (API) order: min keeps the first of equal elements.
+        return shop.stream()
+                .filter(item -> item.levelsGained() == 2 && item.affordable(gold))
+                .min(Comparator.comparingInt(item -> purchases.getOrDefault(item.id(), 0)))
+                .map(Decision.Buy::new);
     }
 
-    /** The affordable item granting {@code levels} levels bought least often; ties keep shop (API) order. */
-    static Optional<ShopItem> leastBought(List<ShopItem> shop, Map<String, Integer> purchases, int levels, int gold) {
+    /** The cheapest item that grants a life; ties keep shop (API) order. */
+    private static Optional<ShopItem> cheapestPotion(List<ShopItem> shop) {
         return shop.stream()
-                .filter(item -> item.levelsGained() == levels && item.affordable(gold))
-                .min(Comparator.comparingInt(item -> purchases.getOrDefault(item.id(), 0)));
+                .filter(item -> item.livesGained() > 0)
+                .min(Comparator.comparingInt(ShopItem::cost));
     }
 
     private static Optional<Decision> buy(ShopItem item) {
         return Optional.of(new Decision.Buy(item));
-    }
-
-    /** Safe 1 … deadly 4; unknown after every known tier. */
-    private static int tierRank(Ad ad) {
-        Integer level = Risk.riskLevel(ad);
-        return level == null ? 5 : level;
     }
 }

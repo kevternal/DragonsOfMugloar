@@ -2,9 +2,10 @@ package io.github.kevternal.dragonsofmugloar.npc.game;
 
 import java.util.Map;
 
-/** AD-4 risk mappings, from risk-cues.md and strategies.md. One label table; levels derive from tiers. */
+/** AD-4 risk mappings, from risk-cues.md and strategies.md. */
 public final class Risk {
 
+    /** Declared safest first, so the natural order ranks tiers with unknown last. */
     public enum Tier { SAFE, MODERATE, RISKY, DEADLY, UNKNOWN }
 
     // Tier membership comes from measured win rates [V] (observed-values.md); the boundaries are design choices.
@@ -31,17 +32,6 @@ public final class Risk {
     /** An unsolvable ad's fields are still encoded, so its tier is unknown (AD-3). */
     public static Tier riskTier(Ad ad) {
         return ad.solvable() ? riskTier(ad.probability()) : Tier.UNKNOWN;
-    }
-
-    /** Safe 1, moderate 2, risky 3, deadly 4; null when unknown. */
-    public static Integer riskLevel(Ad ad) {
-        return switch (riskTier(ad)) {
-            case SAFE -> 1;
-            case MODERATE -> 2;
-            case RISKY -> 3;
-            case DEADLY -> 4;
-            case UNKNOWN -> null;
-        };
     }
 
     // Win rate per label in integer percent, from 5,257 non-bait live solves on 2026-10-04 [V]

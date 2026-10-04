@@ -11,7 +11,6 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -40,33 +39,12 @@ class TerminalTest {
     }
 
     private static String box(String... contents) {
-        StringBuilder sb = new StringBuilder("┌" + "─".repeat(Terminal.PANEL_WIDTH + 2) + "┐\n");
+        StringBuilder sb = new StringBuilder("┌" + "─".repeat(ConsoleFormat.PANEL_WIDTH + 2) + "┐\n");
         for (String content : contents) {
-            sb.append("│ ").append(content).append(" ".repeat(Terminal.PANEL_WIDTH - content.length())).append(" │\n");
+            sb.append("│ ").append(content).append(" ".repeat(ConsoleFormat.PANEL_WIDTH - content.length())).append(" │\n");
         }
-        return sb.append("└").append("─".repeat(Terminal.PANEL_WIDTH + 2)).append("┘\n").toString();
-    }
 
-    @Test
-    void entriesFollowThePlanShape() {
-        assertThat(Terminal.formatEntry(SOLVE)).containsExactly(
-                " ✓ Solve  Help defend the village (Piece of cake, 82)",
-                "   You successfully solved the mission!",
-                "   +82 gold");
-        assertThat(Terminal.formatEntry(BUY)).containsExactly(" ✓ Buy    Healing potion", "   −50 gold, +1 life");
-    }
-
-    @Test
-    void failedSolveShowsCrossAndLifeLoss() {
-        List<String> entry = Terminal.formatEntry(new TurnRecord(TurnRecord.Kind.SOLVE, false, "Steal (Gamble, 40)",
-                "You failed on the mission!", new Stats(3, 10, 0, 0, 1), new Stats(1, 10, 0, 0, 2)));
-        assertThat(entry).containsExactly(" ✗ Solve  Steal (Gamble, 40)", "   You failed on the mission!", "   −2 lives");
-    }
-
-    @Test
-    void zeroDeltasLeaveOutTheChangesLine() {
-        assertThat(Terminal.formatEntry(new TurnRecord(TurnRecord.Kind.BUY, false, "Gasoline", null,
-                new Stats(3, 10, 0, 0, 1), new Stats(3, 10, 0, 0, 2)))).containsExactly(" ✗ Buy    Gasoline");
+        return sb.append("└").append("─".repeat(ConsoleFormat.PANEL_WIDTH + 2)).append("┘\n").toString();
     }
 
     @Test
@@ -75,26 +53,13 @@ class TerminalTest {
         terminal.status(new Stats(3, 79, 4, 818, 12));
         terminal.log(SOLVE);
 
-        String first = box("Turn 12     Lives 3    Level 4     Gold 79       Score 818", Terminal.RUNNING);
-        String second = box("Turn 13     Lives 3    Level 4     Gold 161      Score 900", Terminal.RUNNING);
+        String first = box("Turn 12     Lives 3    Level 4     Gold 79       Score 818", StatusPanel.RUNNING);
+        String second = box("Turn 13     Lives 3    Level 4     Gold 161      Score 900", StatusPanel.RUNNING);
         assertThat(output()).isEqualTo(first + ERASE_4 + """
                  ✓ Solve  Help defend the village (Piece of cake, 82)
                    You successfully solved the mission!
                    +82 gold
                 """ + second);
-    }
-
-    @Test
-    void labelsKeepTheirColumnsAsNumbersGrow() {
-        Terminal terminal = terminal(true);
-        terminal.status(new Stats(3, 0, 1, 0, 1));
-        String small = terminal.statsLine();
-        terminal.status(new Stats(12, 123456, 1234, 12345678, 12345));
-        String large = terminal.statsLine();
-        for (String label : List.of("Lives", "Level", "Gold", "Score")) {
-            assertThat(large.indexOf(label)).isEqualTo(small.indexOf(label));
-        }
-        assertThat(terminal.panelLines()).allSatisfy(line -> assertThat(line).hasSize(Terminal.PANEL_WIDTH + 4));
     }
 
     @Test
@@ -105,12 +70,12 @@ class TerminalTest {
 
         terminal.toggled(true);
         // Height 4 plus 1 echoed line; the paused panel adds the idle warning, so it is 5 high.
-        assertThat(output()).startsWith("\r\u001B[5A\u001B[J").contains(Terminal.PAUSED).contains(Terminal.IDLE_WARNING);
+        assertThat(output()).startsWith("\r\u001B[5A\u001B[J").contains(StatusPanel.PAUSED).contains(StatusPanel.IDLE_WARNING);
         bytes.reset();
 
         terminal.toggled(false);
-        assertThat(output()).startsWith("\r\u001B[6A\u001B[J").contains(Terminal.RUNNING)
-                .doesNotContain(Terminal.IDLE_WARNING);
+        assertThat(output()).startsWith("\r\u001B[6A\u001B[J").contains(StatusPanel.RUNNING)
+                .doesNotContain(StatusPanel.IDLE_WARNING);
         bytes.reset();
 
         terminal.log(BUY);
@@ -135,7 +100,7 @@ class TerminalTest {
         terminal.status(new Stats(3, 0, 1, 0, 1));
         terminal.inputClosed();
         assertThat(output()).endsWith(box("Turn 1      Lives 3    Level 1     Gold 0        Score 0",
-                Terminal.RUNNING_NO_PAUSE));
+                StatusPanel.RUNNING_NO_PAUSE));
     }
 
     @Test
@@ -216,7 +181,6 @@ class TerminalTest {
         terminal.bait(2, -10);
         terminal.summary("game over", SOLVE.before(), 3);
 
-        assertThat(Terminal.formatBait(1, 0)).isEqualTo(" ! Bait   1 ad on the board | state estimate 0");
         assertThat(output()).isEqualTo("""
                 Turn 12 | Lives 3 | Level 4 | Gold 79 | Score 818 | ▶ running · Enter = pause
                  ! Bait   2 ads on the board | state estimate -10

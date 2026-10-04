@@ -38,15 +38,19 @@ public final class AdKind {
         if (message == null) {
             return 0;
         }
+
         if (message.startsWith("Steal")) {
             return STEAL_STATE_DELTA;
         }
+
         if (message.startsWith("Infiltrate")) {
             return 2;
         }
+
         if (message.startsWith("Investigate")) {
             return 1;
         }
+
         return 0;
     }
 }

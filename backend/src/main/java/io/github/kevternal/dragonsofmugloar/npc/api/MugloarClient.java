@@ -87,6 +87,7 @@ public class MugloarClient {
                 if (!e.retryable() || attempt >= RETRY_DELAYS_MS.length) {
                     throw e;
                 }
+
                 sleeper.sleep(RETRY_DELAYS_MS[attempt]);
             }
         }
@@ -111,8 +112,6 @@ public class MugloarClient {
         used++;
         try {
             return request.get();
-        } catch (MugloarApiException e) {
-            throw e;
         } catch (ResourceAccessException e) {
             throw new MugloarApiException(MugloarApiException.Kind.NETWORK, null, e.getMessage(), e);
         } catch (RestClientException e) {

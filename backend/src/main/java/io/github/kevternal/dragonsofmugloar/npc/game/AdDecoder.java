@@ -19,22 +19,18 @@ public final class AdDecoder {
         if (encrypted == null) {
             return new Ad(adId, message, reward, expiresIn, probability, true);
         }
+
+        Ad unsolvable = new Ad(adId, message, reward, expiresIn, probability, false);
         try {
-            switch (encrypted) {
-                case 1 -> {
-                    return new Ad(base64(adId), base64(message), reward, expiresIn, base64(probability), true);
-                }
-                case 2 -> {
-                    return new Ad(rot13(adId), rot13(message), reward, expiresIn, rot13(probability), true);
-                }
-                default -> {
-                    // Fall through to the unsolvable ad below.
-                }
-            }
+            return switch (encrypted) {
+                case 1 -> new Ad(base64(adId), base64(message), reward, expiresIn, base64(probability), true);
+                case 2 -> new Ad(rot13(adId), rot13(message), reward, expiresIn, rot13(probability), true);
+                default -> unsolvable;
+            };
         } catch (IllegalArgumentException e) {
-            // Undecodable base64: fall through to the unsolvable ad below.
+            // Undecodable base64.
+            return unsolvable;
         }
-        return new Ad(adId, message, reward, expiresIn, probability, false);
     }
 
     // Whether the base64 payload is always UTF-8 is [U].
@@ -53,6 +49,7 @@ public final class AdDecoder {
                 out.append(c);
             }
         }
+
         return out.toString();
     }
 }
