@@ -8,7 +8,7 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 
-/** Tree v3.2, from the plan's I/O and edge-case matrix. */
+/** Tree v3.4, from the plan's I/O and edge-case matrix. */
 class StrategyTest {
 
     private static final ShopItem POTION = new ShopItem("hpot", "Healing potion", 50);
@@ -98,8 +98,9 @@ class StrategyTest {
     }
 
     @Test
-    void twoLivesNoSafeAdBuysAPlus1From150() {
-        assertThat(decide(stats(2, 200), List.of(ad("m", "Quite likely", 100)))).isEqualTo(buy(CLAW_1));
+    void twoLivesNoSafeAdBelow350NeverBuysAPlus1() {
+        Ad moderate = ad("m", "Quite likely", 100);
+        assertThat(decide(stats(2, 200), List.of(moderate))).isEqualTo(solve(moderate));
     }
 
     @Test
@@ -140,16 +141,17 @@ class StrategyTest {
     }
 
     @Test
-    void allDeadlyAt200BuysAPlus1() {
-        List<Ad> board = List.of(ad("d1", "Playing with fire", 200), ad("d2", "Suicide mission", 900));
-        assertThat(decide(stats(3, 200), board)).isEqualTo(buy(CLAW_1));
+    void allDeadlyBelow350NeverBuysAPlus1() {
+        Ad fire = ad("d1", "Playing with fire", 200);
+        Ad suicide = ad("d2", "Suicide mission", 900);
+        assertThat(decide(stats(3, 200), List.of(fire, suicide))).isEqualTo(solve(fire));
     }
 
     @Test
-    void allDeadlyBelow150SolvesByValue() {
+    void allDeadlyWithLittleGoldSolvesByValue() {
         Ad fire = ad("d1", "Playing with fire", 200);
         Ad suicide = ad("d2", "Suicide mission", 900);
-        // 31×200 − 69×50 = 2750 against 6×900 − 94×50 = 700.
+        // 31×200 − 69×75 = 1025 against 6×900 − 94×75 = −1650.
         assertThat(decide(stats(3, 120), List.of(suicide, fire))).isEqualTo(solve(fire));
     }
 
@@ -162,40 +164,47 @@ class StrategyTest {
 
     @Test
     void valuePrefersTheLikelierAdWhenTheLossPenaltyOutweighsTheReward() {
-        // No safe ad, so lossCost = 50. 31×150 − 69×50 = 1200 against 63×70 − 37×50 = 2560.
+        // No safe ad, so lossCost = 75. 31×150 − 69×75 = −525 against 63×70 − 37×75 = 1635.
         Ad fire = ad("f", "Playing with fire", 150);
         Ad hmm = ad("h", "Hmmm....", 70);
         assertThat(decide(stats(3, 100), List.of(fire, hmm))).isEqualTo(solve(hmm));
-        assertThat(Strategy.value(fire, 50)).isEqualTo(1200);
-        assertThat(Strategy.value(hmm, 50)).isEqualTo(2560);
+        assertThat(Strategy.value(fire, 75)).isEqualTo(-525);
+        assertThat(Strategy.value(hmm, 75)).isEqualTo(1635);
     }
 
     @Test
-    void valueFollowsTheFormulaEvenForALongShot() {
-        // 31×200 − 69×50 = 2750 beats 63×70 − 37×50 = 2560 by the plan's formula.
+    void lossBase75PrefersTheLikelierJobOverALongShot() {
+        // No safe ad, so lossCost = 75: 63×70 − 37×75 = 1635 beats 31×200 − 69×75 = 1025 (at base 50 the long shot won).
         Ad fire = ad("f", "Playing with fire", 200);
         Ad hmm = ad("h", "Hmmm....", 70);
-        assertThat(decide(stats(3, 100), List.of(hmm, fire))).isEqualTo(solve(fire));
+        assertThat(decide(stats(3, 100), List.of(hmm, fire))).isEqualTo(solve(hmm));
     }
 
     @Test
     void lossCostsATurnValuedAtTheBestSafeReward() {
-        // lossCost = 50 + 100: 72×150 − 28×150 = 6600 < 100×100 = 10000.
+        // lossCost = 75 + 100: 72×150 − 28×175 = 5900 < 100×100 = 10000.
         Ad safe = ad("s", "Sure thing", 100);
         Ad likely = ad("l", "Quite likely", 150);
         assertThat(decide(stats(3, 100), List.of(likely, safe))).isEqualTo(solve(safe));
-        assertThat(Strategy.value(likely, 150)).isEqualTo(6600);
+        assertThat(Strategy.value(likely, 175)).isEqualTo(5900);
     }
 
     @Test
     void valueTiesGoToHigherWinRateThenSoonerExpiry() {
-        // No safe ad, so lossCost = 50: 87×22 − 13×50 = 1264 = 72×37 − 28×50.
-        Ad walk = ad("w", "Help w", "Walk in the park", 22, 5);
-        Ad likely = ad("l", "Help l", "Quite likely", 37, 1);
-        assertThat(Strategy.value(walk, 50)).isEqualTo(Strategy.value(likely, 50));
+        // No safe ad, so lossCost = 75: 87×21 − 13×75 = 852 = 72×41 − 28×75.
+        Ad walk = ad("w", "Help w", "Walk in the park", 21, 5);
+        Ad likely = ad("l", "Help l", "Quite likely", 41, 1);
+        assertThat(Strategy.value(walk, 75)).isEqualTo(Strategy.value(likely, 75));
         assertThat(decide(stats(3, 100), List.of(likely, walk))).isEqualTo(solve(walk));
-        Ad walkSoon = ad("v", "Help v", "Walk in the park", 22, 2);
+        Ad walkSoon = ad("v", "Help v", "Walk in the park", 21, 2);
         assertThat(decide(stats(3, 100), List.of(likely, walk, walkSoon))).isEqualTo(solve(walkSoon));
+    }
+
+    @Test
+    void richButNoPlus2InTheShopSolvesInsteadOfBuyingAPlus1() {
+        Ad moderate = ad("m", "Quite likely", 100);
+        List<ShopItem> noPlus2 = List.of(POTION, CLAW_1, GAS_1);
+        assertThat(Strategy.decide(stats(2, 400), List.of(moderate), noPlus2, Map.of(), 0)).isEqualTo(solve(moderate));
     }
 
     @Test

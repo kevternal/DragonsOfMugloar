@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/** The NPC's decision rule, decision tree v3.2, as pure functions (strategy-findings.md, "The decision tree"). */
+/** The NPC's decision rule, decision tree v3.4, as pure functions (strategy-findings.md, "The decision tree"). */
 public final class Strategy {
 
     /**
@@ -14,9 +14,8 @@ public final class Strategy {
      * (strategy-findings.md, "Bait ads").
      */
     static final int STATE_FLOOR = -8;
-    /** Step 4: with this much gold at 2 lives and no safe ad, a +2 item; from 150, a +1 item. */
+    /** Step 4: with this much gold at 2 lives and no safe ad, a +2 item (never a +1). */
     static final int GOLD_TWO_LIVES_PLUS2 = 350;
-    static final int GOLD_PLUS1 = 150;
     /** Step 5: buy a +2 item from this much gold while some playable ad is not safe. */
     static final int GOLD_PROACTIVE_PLUS2 = 400;
     /**
@@ -24,8 +23,12 @@ public final class Strategy {
      * (strategy-findings.md, "Tree v3.1: best run").
      */
     static final int GOLD_DEADLY_PLUS2 = 350;
-    /** Step 7b: a lost life costs a potion (50) plus the turn, valued at the best safe reward. */
-    static final int POTION_LOSS = 50;
+    /**
+     * Step 7b: the base cost of a lost life (a potion and more), plus the turn, valued at the best safe
+     * reward. 75 with no +1 items had the best results in a few live probe games; the ranking between
+     * bases is [U] (strategy-findings.md, "Loss penalty and +1 items").
+     */
+    static final int LOSS_BASE = 75;
 
     /** Step 7: lowest tier (unknown last), then highest reward, then soonest expiry. */
     private static final Comparator<Ad> SAFEST =
@@ -45,16 +48,15 @@ public final class Strategy {
     }
 
     /**
-     * Tree v3.2; the first match wins:
+     * Tree v3.4; the first match wins:
      * <ol>
      *   <li>Drop bait.</li>
      *   <li>Drop steals when one more would take the state estimate below −8, or bait is on the board,
      *       unless only steals are left.</li>
      *   <li>At 1 life with the potion affordable, buy it.</li>
-     *   <li>At 2 lives with no safe playable ad: 350+ gold, the least-bought +2 item; else 150+, the
-     *       least-bought +1 item.</li>
+     *   <li>At 2 lives with no safe playable ad and 350+ gold, the least-bought +2 item.</li>
      *   <li>At 2+ lives with 400+ gold and some playable ad not safe, the least-bought +2 item.</li>
-     *   <li>At 2+ lives on an all-deadly board: 350+ gold, a +2 item; else 150+, a +1 item.</li>
+     *   <li>At 2+ lives on an all-deadly board with 350+ gold, the least-bought +2 item.</li>
      *   <li>Gold below the potion's cost: solve the safest ad.</li>
      *   <li>7b. Otherwise solve the best value ad (see {@link #value}).</li>
      *   <li>No playable ad: empty.</li>
@@ -107,8 +109,8 @@ public final class Strategy {
         if (potion.isPresent() && gold < potion.get().cost()) {
             return Optional.of(new Decision.Solve(playable.stream().min(SAFEST).orElseThrow()));
         }
-        // 7b. Best value, where a loss costs a potion and a turn.
-        int lossCost = POTION_LOSS + playable.stream()
+        // 7b. Best value, where a loss costs LOSS_BASE plus a turn (valued at the best safe reward).
+        int lossCost = LOSS_BASE + playable.stream()
                 .filter(ad -> Risk.riskTier(ad) == Risk.Tier.SAFE)
                 .mapToInt(Ad::reward).max().orElse(0);
         Comparator<Ad> byValue = Comparator.comparingLong((Ad ad) -> value(ad, lossCost)).reversed()
@@ -136,19 +138,17 @@ public final class Strategy {
         return noSteals.isEmpty() ? candidates : noSteals;
     }
 
-    /** At {@code plus2Gold}+ gold the least-bought +2 item; else at 150+ the least-bought +1 item. */
+    /**
+     * At {@code plus2Gold}+ gold the least-bought +2 item. Never a +1: it eases about 3% of ads for a
+     * whole turn, and every losing probe game bought 7–22 of them [V] (strategy-findings.md, "Loss penalty
+     * and +1 items").
+     */
     private static Optional<Decision> levelItem(List<ShopItem> shop, Map<String, Integer> purchases, int gold,
                                                 int plus2Gold) {
-        if (gold >= plus2Gold) {
-            Optional<ShopItem> item = leastBought(shop, purchases, 2, gold);
-            if (item.isPresent()) {
-                return buy(item.get());
-            }
+        if (gold < plus2Gold) {
+            return Optional.empty();
         }
-        if (gold >= GOLD_PLUS1) {
-            return leastBought(shop, purchases, 1, gold).map(Decision.Buy::new);
-        }
-        return Optional.empty();
+        return leastBought(shop, purchases, 2, gold).map(Decision.Buy::new);
     }
 
     /** The affordable item granting {@code levels} levels bought least often; ties keep shop (API) order. */
