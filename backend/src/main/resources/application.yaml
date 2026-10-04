@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: dragons-of-mugloar
+  main:
+    # A console app: plays one game and exits; no web server is started.
+    web-application-type: none
+    banner-mode: off
+  docker:
+    compose:
+      # No compose service exists yet.
+      enabled: false
+
+logging:
+  level:
+    # Keeps Spring's output out of the activity log on stdout.
+    root: warn
+
+npc:
+  enabled: true
