@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { mount } from '@vue/test-utils'
-import type { TurnRecord } from '@/game/types'
+import type { RankedJob, TurnRecord } from '@/game/types'
 import ActivityLog from '../ActivityLog.vue'
-import AdCard from '../AdCard.vue'
 import BoardNotice from '../BoardNotice.vue'
+import GameIcon from '../GameIcon.vue'
+import JobRow from '../JobRow.vue'
 import ReputationPanel from '../ReputationPanel.vue'
 import ShopItem from '../ShopItem.vue'
 import StatsBar from '../StatsBar.vue'
@@ -16,22 +19,145 @@ const ad = {
     probability: 'Risky',
     solvable: true,
 }
+const job = (fields: Partial<RankedJob> = {}): RankedJob => ({
+    ad,
+    tier: 'risky',
+    winPct: 41,
+    value: 0,
+    flag: null,
+    best: false,
+    ...fields,
+})
 
-describe('AdCard', () => {
-    it('shows message, reward, expiry, probability as text and emits solve', async () => {
-        const wrapper = mount(AdCard, { props: { ad, disabled: false } })
-        expect(wrapper.text()).toContain('Job one')
-        expect(wrapper.text()).toContain('Risky')
-        await wrapper.get('button').trigger('click')
+/** Text a sighted user sees: drops visually hidden text (aria-hidden marks stay). */
+function visible(el: Element): string {
+    const copyEl = el.cloneNode(true) as Element
+    copyEl.querySelectorAll('.visually-hidden').forEach((n) => n.remove())
+    return (copyEl.textContent ?? '').replace(/\s+/g, ' ').trim()
+}
+
+/** The visible pieces of the odds line: label, win %, then each badge. */
+function oddsParts(el: Element): string[] {
+    return [...el.querySelectorAll('.odds > :not(.visually-hidden)')].map((n) => visible(n))
+}
+
+/** The only button (role) in a row; its name is computed from its content. */
+function rowButton(wrapper: ReturnType<typeof mount>) {
+    const buttons = wrapper.findAll('button')
+    expect(buttons).toHaveLength(1)
+    return buttons[0]!
+}
+
+describe('JobRow', () => {
+    it('is one button whose content names the odds first, then the job, gold and turns', async () => {
+        const wrapper = mount(JobRow, { props: { job: job(), disabled: false } })
+        const button = rowButton(wrapper)
+        expect(button.attributes('aria-label')).toBeUndefined()
+        expect(spoken(button.element)).toBe(
+            'Solve: risky, Risky, 41%. Job one. 10 gold, 2 turns left',
+        )
+        await button.trigger('click')
         expect(wrapper.emitted('solve')).toEqual([['a1']])
     })
 
-    it('disables solve when unsolvable or disabled', () => {
-        const bad = mount(AdCard, { props: { ad: { ...ad, solvable: false }, disabled: false } })
-        expect(bad.get('button').attributes('disabled')).toBeDefined()
-        expect(bad.get('button').attributes('aria-describedby')).toBeTruthy()
-        const off = mount(AdCard, { props: { ad, disabled: true } })
-        expect(off.get('button').attributes('disabled')).toBeDefined()
+    it('shows the label, win %, reward and expiry as visible text', () => {
+        const wrapper = mount(JobRow, { props: { job: job(), disabled: false } })
+        const button = rowButton(wrapper)
+        expect(oddsParts(button.element)).toEqual(['Risky', '41%'])
+        expect(visible(button.get('.reward').element)).toBe('10')
+        expect(visible(button.get('.expiry').element)).toBe('2')
+        expect(button.find('.reward [aria-hidden="true"]').exists()).toBe(true)
+        expect(button.find('.expiry [aria-hidden="true"]').exists()).toBe(true)
+    })
+
+    it.each([
+        { tier: 'safe', icon: 'cake-slice' },
+        { tier: 'moderate', icon: 'footprint' },
+        { tier: 'risky', icon: 'rolling-dices' },
+        { tier: 'deadly', icon: 'death-skull' },
+    ] as const)('shows the $icon icon for a $tier job', ({ tier, icon }) => {
+        const wrapper = mount(JobRow, { props: { job: job({ tier }), disabled: false } })
+        const riskIcon = wrapper.get('.risk').findComponent(GameIcon)
+        expect(riskIcon.props('name')).toBe(icon)
+        expect(spoken(rowButton(wrapper).element)).toContain(`Solve: ${tier}, `)
+    })
+
+    it('shows and names each badge with the odds', () => {
+        const best = mount(JobRow, { props: { job: job({ best: true }), disabled: false } })
+        expect(spoken(rowButton(best).element)).toContain('41%, Best pick. Job one.')
+        expect(oddsParts(best.element)).toEqual(['Risky', '41%', 'Best pick'])
+
+        const trap = mount(JobRow, { props: { job: job({ flag: 'trap' }), disabled: false } })
+        expect(spoken(rowButton(trap).element)).toContain('41%, Trap. Job one.')
+        expect(oddsParts(trap.element)).toEqual(['Risky', '41%', 'Trap'])
+
+        const state = mount(JobRow, {
+            props: { job: job({ flag: 'state-risk' }), disabled: false },
+        })
+        expect(spoken(rowButton(state).element)).toContain('41%, Angers the state. Job one.')
+        expect(oddsParts(state.element)).toEqual(['Risky', '41%', 'Angers the state'])
+
+        const both = mount(JobRow, {
+            props: { job: job({ best: true, flag: 'state-risk' }), disabled: false },
+        })
+        expect(spoken(rowButton(both).element)).toContain('41%, Best pick, Angers the state.')
+    })
+
+    it('says unknown odds and shows a "?" mark for an unknown label; one turn left', () => {
+        const wrapper = mount(JobRow, {
+            props: {
+                job: job({
+                    ad: { ...ad, probability: 'Maybe?', expiresIn: 1 },
+                    tier: 'unknown',
+                    winPct: null,
+                    value: null,
+                }),
+                disabled: false,
+            },
+        })
+        const button = rowButton(wrapper)
+        expect(spoken(button.element)).toBe(
+            'Solve: unknown risk, Maybe?, unknown odds. Job one. 10 gold, 1 turn left',
+        )
+        expect(visible(button.get('.risk').element)).toBe('?')
+        expect(button.find('.risk .game-icon').exists()).toBe(false)
+    })
+
+    it('disables an unsolvable job and describes why; disables when asked', () => {
+        const locked = mount(JobRow, {
+            props: {
+                job: job({ ad: { ...ad, solvable: false }, tier: 'unknown', winPct: null }),
+                disabled: false,
+            },
+        })
+        const button = rowButton(locked)
+        expect(button.attributes('disabled')).toBeDefined()
+        const note = locked.get(`#${button.attributes('aria-describedby')}`)
+        expect(note.text()).toContain('cannot be solved')
+
+        const off = mount(JobRow, { props: { job: job(), disabled: true } })
+        expect(rowButton(off).attributes('disabled')).toBeDefined()
+        expect(rowButton(off).attributes('aria-describedby')).toBeUndefined()
+    })
+})
+
+describe('GameIcon', () => {
+    it('is decorative and draws its shape as a mask, never as markup', () => {
+        const wrapper = mount(GameIcon, { props: { name: 'trophy' } })
+        const span = wrapper.get('span')
+        expect(span.attributes('aria-hidden')).toBe('true')
+        expect(span.element.innerHTML).toBe('')
+        expect(span.attributes('style')).toMatch(/mask-image: url\("[^"]+"\)/)
+    })
+
+    it('ships every icon without the black background square, filled white', () => {
+        // Vitest runs from the frontend root (vitest.config.ts `root`).
+        const dir = join(process.cwd(), 'src/assets/icons')
+        const files = readdirSync(dir).filter((f) => f.endsWith('.svg'))
+        expect(files).toHaveLength(12)
+        const sources = files.map((file) => readFileSync(join(dir, file), 'utf8'))
+        expect(files.filter((_, i) => sources[i]!.includes('M0 0h512v512H0z'))).toEqual([])
+        expect(files.filter((_, i) => !sources[i]!.includes('fill="#fff"'))).toEqual([])
     })
 })
 
@@ -62,6 +188,22 @@ describe('StatsBar', () => {
         })
         expect(wrapper.text()).toContain('3')
         expect(wrapper.text()).toContain('unknown')
+    })
+
+    it('puts a decorative icon before each value and keeps the text labels', () => {
+        const wrapper = mount(StatsBar, {
+            props: { stats: { lives: 3, gold: 9, level: 1, score: 2, turn: 4 } },
+        })
+        expect(wrapper.findAll('dt').map((dt) => dt.text())).toEqual([
+            'Lives',
+            'Gold',
+            'Level',
+            'Score',
+            'Turn',
+        ])
+        for (const dd of wrapper.findAll('dd')) {
+            expect(dd.element.firstElementChild?.getAttribute('aria-hidden')).toBe('true')
+        }
     })
 })
 

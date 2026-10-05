@@ -13,12 +13,37 @@
     --color-error-text: #8a1c1c;
     --color-notice-bg: #fff4d6;
     --color-success: #2e6b2e;
+    --color-row-hover: #fbf3e4;
+
+    /* Risk tiers (CAP-6). Each is at least 5.1:1 against bg, surface, row hover and notice bg,
+       so it also passes as text (4.5:1) and as a non-text cue (3:1, AD-15). Always paired with
+       an icon, the label and the win %. */
+    --color-risk-safe: #2e6b2e;
+    --color-risk-moderate: #7a5a00;
+    --color-risk-risky: #b0440c;
+    --color-risk-deadly: #8a1c1c;
+    --color-risk-unknown: #5c4e40;
+
+    /* Job badges (CAP-16): text on fill, each at least 5.8:1. The best row's border matches
+       its badge. */
+    --color-best: var(--color-risk-safe);
+    --color-badge-best-bg: var(--color-best);
+    --color-badge-best-text: var(--color-surface);
+    --color-badge-trap-bg: var(--color-risk-deadly);
+    --color-badge-trap-text: var(--color-surface);
+    --color-badge-state-bg: var(--color-notice-bg);
+    --color-badge-state-text: var(--color-risk-moderate);
+
+    /* Self-hosted via @fontsource-variable (OFL), imported in main.ts; never a Google Fonts link. */
+    --font-display: 'Fredoka Variable', 'Fredoka', ui-rounded, system-ui, sans-serif;
+    --font-body: 'Nunito Variable', 'Nunito', system-ui, sans-serif;
 
     --space-1: 0.4rem;
     --space-2: 0.8rem;
     --space-3: 1.6rem;
     --space-4: 2.4rem;
 
+    --font-size-xs: 1.2rem;
     --font-size-s: 1.4rem;
     --font-size-m: 1.6rem;
     --font-size-l: 2rem;

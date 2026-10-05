@@ -3,12 +3,13 @@ title: 'B1: jobs board recommendations, compact rows, icons and fonts'
 type: 'feature'
 ticket: ''
 created: '2026-10-05'
-status: 'draft'
+status: 'built'
+baseline_revision: '4b8080bdfbd872a44fb298ecaa36e217f4c90ac8'
 route: 'full'
 route_source: 'auto'
-review: ''
-review_source: ''
-lenses_ran: []
+review: 'thorough'
+review_source: 'pinned'
+lenses_ran: ['quick', 'conformance', 'test-quality', 'accessibility', 'bugs-efficiency-readability', 'manual-browser']
 review_loop_iteration: 0
 context:
   - '{project-root}/_bmad-output/initiative-game-client/spec-mugloar-game-client/recommendations.md'
@@ -102,14 +103,14 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `package.json`, `src/main.ts`, `tokens.css`, `base.css`: fonts and tokens. Fonts first, so later visuals are judged in the real faces.
-- [ ] `src/assets/icons/*`, `src/components/GameIcon.vue`: the icon pipeline.
-- [ ] `src/game/risk.ts`, `src/game/recommendations.ts`, `src/game/types.ts`: the pure rules (AD-4).
-- [ ] `src/stores/game.ts`: `stateEstimate` and `rankedJobs` (AD-6, AD-7).
-- [ ] `src/copy.ts`: job texts and credits.
-- [ ] `src/components/JobRow.vue` (delete `AdCard.vue`), `src/views/AdsPanel.vue`: compact rows (CAP-16).
-- [ ] `src/components/StatsBar.vue`, `ReputationPanel.vue`: stat icons.
-- [ ] Tests: one or more tests per I/O matrix row, written to fail when the rule breaks. Role and name queries only.
+- [x] `package.json`, `src/main.ts`, `tokens.css`, `base.css`: fonts and tokens. Fonts first, so later visuals are judged in the real faces.
+- [x] `src/assets/icons/*`, `src/components/GameIcon.vue`: the icon pipeline.
+- [x] `src/game/risk.ts`, `src/game/recommendations.ts`, `src/game/types.ts`: the pure rules (AD-4).
+- [x] `src/stores/game.ts`: `stateEstimate` and `rankedJobs` (AD-6, AD-7).
+- [x] `src/copy.ts`: job texts and credits.
+- [x] `src/components/JobRow.vue` (delete `AdCard.vue`), `src/views/AdsPanel.vue`: compact rows (CAP-16).
+- [x] `src/components/StatsBar.vue`, `ReputationPanel.vue`: stat icons.
+- [x] Tests: one or more tests per I/O matrix row, written to fail when the rule breaks. Role and name queries only.
 
 **Acceptance Criteria:**
 - Given 1440×900 and a 12-ad board, the jobs view shows at least 8 rows without scrolling (today it shows about 4).
@@ -119,11 +120,51 @@ context:
 
 ## Implementation Notes
 
+- **Best pick with unknown odds.** The best pick is the first *playable* ad in display order. When no playable ad has known odds, that is the first unknown-odds one (soonest expiry, then adId), which is also what the backend reaches when every value ties at win rate 0. A left-out steal or a trap is never best.
+- **Unknown-odds and trap groups** have no value, so they sort by expiry, then adId. A left-out steal with an unknown label sorts with the unknown odds but keeps its state-risk flag. Unsolvable ads sit in the unknown group with no flag.
+- **`RankedJob`** also carries `tier` and `winPct`, so `JobRow` never re-derives them (and an unlisted label warns once per ranking, not per render). `risk.ts` adds `adRiskTier(ad)`: unsolvable ads are `unknown` without a second warning.
+- **`stateDelta(message)`** goes by message prefix, as `AdKind.stateDelta(message)` does: bait worded "Steal …" is −2, and other bait follows its own prefix. The guard reads the steal delta from the same `STATE_DELTA` table.
+- **Store:** `runTurn` takes an `effects(response)` callback returning `{ incrementTurn, stateChange }`, which `recordTurn` applies right after the log push. A reputation turn sets `stateEstimate = state`, and any other turn adds its change. `solve` captures `stateDelta(ad.message)` before the `await`. `stateEstimate` is exposed read-only, and `rankJobs` gets `gold`.
+- **Row layout:** a container query (`@container job (min-width: 64rem)`, 640px at the 62.5% root [V, Chrome 2026-10-05]) puts the row on one line; narrower rows use two lines. No viewport `@media` outside `layout.css`.
+- **Row name:** the button's content forms its name, with no `aria-label`. The odds line comes first in the DOM and on screen, and visually hidden parts from `copy.jobs` add "Solve: ", the tier word, the separators, " gold" and " turns left". Example: "Solve: safe, Piece of cake, 95%, Best pick. Escort the mayor. 80 gold, 4 turns left". The clamp lifts on hover and `:focus-visible`.
+- **Unknown tier icon:** the approved set has no art for unknown, so it shows a "?" mark (decorative) next to the "unknown odds" text.
+- **Tier colours:** each is at least 5.2:1 against bg, surface and the notice background (passes as text too).
+- **Icons:** the 12 SVGs, fetched from game-icons/icons master on 2026-10-05, with `<path d="M0 0h512v512H0z"/>` removed. Vite inlines them as data URIs (under the 4 KB limit), so they add no requests.
+
 ## Plan Change Log
 
 ## Review Triage Log
 
+Review pass 1 (2026-10-05). Lenses: quick, conformance, test-quality (61 mutations), accessibility, bugs-efficiency-readability, manual-browser (Chrome, mocked API). The browser run was repeated after a concurrent mutation run made the first pass unreliable; the tree was confirmed identical to the reviewed diff. Verdict counts: medium 7, low 12, false 1, rejected 6.
+
+| # | Finding (lenses) | Verdict | Route | Evidence / action |
+|---|---|---|---|---|
+| 1 | Icons vanish in forced-colors mode (a11y, browser) | medium | patch | Browser: 0 ink pixels, because `background-color: currentColor` is forced to Canvas. Fix: `forced-color-adjust: none` and `CanvasText` under forced colors. |
+| 2 | The row `aria-label` overrides visible content: it adds "Solve:" that isn't visible, is 25–40 words long, and announces Best pick and Trap last (a11y, quick, bugs) | medium | patch | Fix: drop `aria-label` and build the name from content. Put a visually hidden "Solve" and units in the text, and place the odds and badges line before the message so the decisive cues come first. |
+| 3 | The ad text is clamped with no way for sighted users to read the full text (a11y) | medium | patch | SC 1.4.10 and 1.4.12. Fix: unclamp on hover and `:focus-visible` of the row. |
+| 4 | Readability: unbraced ifs; magic `group` numbers; placeholder rows mutated later; dense loss-cost expression; dead `?? 0`; mixed delta constants; `rankJobs` takes all of `Stats` but reads gold; two lookups per ad and three things named `winPct`; `recordTurn` writes the estimate twice; positional `runTurn`/`recordTurn` arguments; template ternary; dead `.trap` class; badge kind mismatch; container name; redundant `WebkitMaskImage`; duplicated badge tokens; exports used only by tests (conformance, bugs) | medium | patch | Verified by reading. The user requires code that reads like a book. |
+| 5 | Tests stay green under mutations: playable-only loss cost, order inside the left-out-steal and trap groups, the `adId` tie-break in the expiry groups, the unknown-label steal flag, the safest-pick tier order, the only-steals winner, the circular loss-cost expectation, the store passing stats and shop, JobRow visible text and the tier icon mapping, non-role queries, unrealistic bait fixtures, garbled `risk.spec` titles (test-quality, quick) | medium | patch | Mutation evidence is listed by the lens. |
+| 6 | At 360×640 only 4 rows fit: the credits wrap to 3 lines, and the long state-risk badge wraps the row (browser, a11y) | medium | patch | Bars measured 185+134 px. Fix: shorter credits and badge copy, still naming every author and the licence. |
+| 7 | `warnUnlisted` repeats on every `rankedJobs` recompute (quick, conformance, bugs, browser) | low | patch | Fix: dedupe per field and value in `warn.ts`. |
+| 8 | `stateDelta('bait')` is −2 for any bait, while Java goes by message prefix (quick, conformance) | low | patch | Fix: derive the delta from the message prefix, as Java does. |
+| 9 | `value` is computed for traps, though the spec defines it for playable ads only (conformance) | low | patch | Fix: `null` for traps. |
+| 10 | Inline "?" mark; dead `copy.ads.*` strings; "Solve" duplicated (quick, conformance) | low | patch | Fix: use copy, delete the dead keys. |
+| 11 | Disabled rows lose their tier stripe through specificity (a11y) | low | patch | `button:disabled` (0,1,1) beats `.job`. |
+| 12 | `ul` with `list-style: none` loses list semantics in Safari; the ranking isn't stated (a11y) | low | patch | Fix: `role="list"` and a visually hidden "best first" intro from copy. |
+| 13 | Tier never appears in text (AD-15) (a11y, conformance) | low | patch | Fix: a visually hidden tier word in the name. |
+| 14 | Badges have no border in forced colors; the hover contrast comment is stale (a11y, bugs) | low | patch | Fix: transparent border; update the comment to state a 5.1:1 floor. |
+| 15 | `stateEstimate` is writable from outside the store (conformance, bugs) | low | patch | Fix: expose it read-only; drive the test through a reputation reading. |
+| 16 | The AD-4 table doesn't list `tier`, `winPct` and `adRiskTier`; AD-14 allows no `em` (GameIcon) and doesn't say how to annotate container queries (conformance, a11y) | low | patch | Spine updated by the orchestrator: `em` allowed for icon sizing, container queries annotated at the 10 px root. |
+| 17 | An unknown-odds ad versus Impossible gets a different best pick than Java (conformance) | low | rejected | The spec's deliberate group order; it differs only in a 0 % tie. |
+| 18 | `lossCost` uses `Math.max(0, …)`, unlike Java (conformance) | false | rejected | Rewards are positive in every probe. |
+| 19 | Fonts import every unicode subset (bugs) | low | rejected | `unicode-range` means only latin is fetched. |
+| 20 | Font swap shifts layout (a11y) | low | rejected | Cosmetic; it needs metric overrides. |
+| 21 | Credits name the authors collectively, not per icon (a11y) | low | rejected | Names all three authors plus the site and licence; meets CC BY. |
+| 22 | The unsolvable row's name contains encoded text (a11y) | low | rejected | The text is visible too; there's nothing better to show. |
+
 ## Verification
+
+**Results (2026-10-05):** `pnpm test:unit --run` passed 118 of 118 tests. `pnpm lint` reported 0 errors; the oxlint warnings are pedantic-rule noise of the kind already in the codebase. `pnpm build` succeeded. A headless Chrome run of `pnpm preview` with the API mocked showed: 1440×900, 12 of 12 rows visible (34px each); 360×640, no horizontal scroll and every row's icon, label, %, reward and expiry inside the viewport; fonts computed and loaded as Fredoka Variable and Nunito Variable; font requests only to the app origin.
 
 **Commands:**
 - `pnpm test:unit --run`: all pass.
@@ -132,3 +173,17 @@ context:
 
 **Manual checks:**
 - Browser at 1440×900 and 360×640 with the API mocked: the row counts and badges match the ACs, and the fonts render as Fredoka and Nunito.
+
+Patch verification (2026-10-05):
+- **Checks:** tests 134/134 across 3 runs, lint 0 errors, build and prettier OK.
+- **Browser re-check, mocked API:**
+  - 12/12 rows visible at 1440×900, in the correct order, and the page doesn't scroll.
+  - The clamp lifts on hover and on keyboard focus.
+  - Forced-colors icons are visible (38–65% ink).
+  - One unknown-label warning per load.
+  - Accessible names are content-based, with the decisive cues first.
+  - Three played turns re-rank correctly.
+- **Remaining, accepted:**
+  - At 360×640, 4 rows fit between the bars. The top bar (185 px) is now the limit; that's a layout follow-up.
+  - On desktop the odds sit in their own column beside the message (the intended one-line wide row).
+  - Accessible names carry a space before the separators, from flex-item text joining. Screen readers don't voice it; rejected as negligible.

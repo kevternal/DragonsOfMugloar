@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import AdCard from '@/components/AdCard.vue'
 import BoardNotice from '@/components/BoardNotice.vue'
+import JobRow from '@/components/JobRow.vue'
 import { copy } from '@/copy'
 import { useGameStore } from '@/stores/game'
 
@@ -20,10 +20,15 @@ const game = useGameStore()
         <p v-if="game.board.length === 0 && !game.boardStale && game.status === 'playing'">
             {{ copy.ads.empty }}
         </p>
-        <ul class="list">
-            <li v-for="ad in game.board" :key="ad.adId">
-                <AdCard
-                    :ad="ad"
+        <p v-if="game.rankedJobs.length > 0" class="visually-hidden">
+            {{ copy.jobs.listIntro }}
+        </p>
+        <!-- role="list": Safari drops list semantics when list-style is none. -->
+        <ul class="list" role="list">
+            <!-- CAP-16: ranked by the store (AD-6); every ad is listed, none hidden. -->
+            <li v-for="job in game.rankedJobs" :key="job.ad.adId">
+                <JobRow
+                    :job="job"
                     :disabled="game.pending || game.boardStale"
                     @solve="game.solve($event)"
                 />
@@ -35,7 +40,7 @@ const game = useGameStore()
 <style scoped>
 .list {
     display: grid;
-    gap: var(--space-3);
-    margin-top: var(--space-3);
+    gap: var(--space-1);
+    margin-top: var(--space-2);
 }
 </style>

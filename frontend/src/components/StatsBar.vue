@@ -1,11 +1,21 @@
 <script setup lang="ts">
 import { copy } from '@/copy'
+import GameIcon, { type IconName } from './GameIcon.vue'
 import StatValue from './StatValue.vue'
 import type { StatKey, Stats } from '@/game/types'
 
 defineProps<{ stats: Stats }>()
 
 const keys: StatKey[] = ['lives', 'gold', 'level', 'score', 'turn']
+
+// Decorative; the text labels stay (AD-15).
+const icons: Record<StatKey, IconName> = {
+    lives: 'heart-drop',
+    gold: 'two-coins',
+    level: 'level-four',
+    score: 'trophy',
+    turn: 'hourglass',
+}
 </script>
 
 <template>
@@ -13,7 +23,9 @@ const keys: StatKey[] = ['lives', 'gold', 'level', 'score', 'turn']
         <dl>
             <div v-for="key in keys" :key="key" class="stat">
                 <dt>{{ copy.stats[key] }}</dt>
-                <dd><StatValue :value="stats[key]" /></dd>
+                <dd>
+                    <GameIcon :name="icons[key]" class="icon" /><StatValue :value="stats[key]" />
+                </dd>
             </div>
         </dl>
     </section>
@@ -43,7 +55,15 @@ dt {
 }
 
 dd {
-    font-weight: bold;
+    display: flex;
+    gap: var(--space-1);
+    align-items: center;
+    font-family: var(--font-display);
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
+}
+
+.icon {
+    color: var(--color-accent);
 }
 </style>

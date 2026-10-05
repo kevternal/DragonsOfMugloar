@@ -1,5 +1,5 @@
 // Every player-facing string lives here, in tavern voice. Buttons state the plain action.
-import type { GameError, Reputation, StatKey } from '@/game/types'
+import type { GameError, Reputation, RiskTier, StatKey } from '@/game/types'
 
 const livesWord = (n: number) => (n === 1 ? 'life' : 'lives')
 
@@ -33,12 +33,35 @@ export const copy = {
     ads: {
         heading: 'Message board',
         empty: 'The board is bare. Nothing is posted right now.',
-        reward: 'Reward',
-        expiresIn: 'Expires in',
-        probability: 'Chance',
-        solve: 'Solve',
         unsolvable:
             'This notice is written in a code the barman cannot read, so it cannot be solved.',
+    },
+    jobs: {
+        /** Visually hidden, before the list: how it is ordered. */
+        listIntro: 'Best jobs first.',
+        unknownOdds: 'unknown odds',
+        /** Visible win rate next to the label, e.g. "87%". */
+        winPct: (n: number) => `${n}%`,
+        bestPick: 'Best pick',
+        trap: 'Trap',
+        stateRisk: 'Angers the state',
+        /*
+         * Visually hidden parts of a row's accessible name, which the row's content forms, e.g.
+         * "Solve: safe, Piece of cake, 95%, Best pick. Escort the mayor. 80 gold, 4 turns left".
+         */
+        solve: 'Solve: ',
+        tier: {
+            safe: 'safe, ',
+            moderate: 'moderate, ',
+            risky: 'risky, ',
+            deadly: 'deadly, ',
+            unknown: 'unknown risk, ',
+        } satisfies Record<RiskTier, string>,
+        separator: ', ',
+        endOdds: '. ',
+        endMessage: '. ',
+        gold: ' gold, ',
+        turnsLeft: (n: number) => (n === 1 ? ' turn left' : ' turns left'),
     },
     board: {
         notice: 'The barman went to put up new posters. Come back later, or have a beer.',
@@ -96,7 +119,7 @@ export const copy = {
         notFound: 'That one is gone from the board. The board has been checked again.',
     },
     loading: 'Fetching your game...',
-    credits: 'A Dragons of Mugloar client.',
+    credits: 'Icons: Lorc, Delapouite, Sbed (game-icons.net, CC BY 3.0)',
 }
 
 export function errorMessage(error: GameError): string {
@@ -112,9 +135,9 @@ export function formatDelta(key: 'gold' | 'lives', value: number): string {
 }
 
 /** CAP-5: the three values; `null` means unknown until first investigated. */
-export function reputationRows(rep: Reputation | null): { label: string; value: number | null }[] {
-    const values = rep === null ? null : [rep.people, rep.state, rep.underworld]
-    return [copy.reputation.people, copy.reputation.state, copy.reputation.underworld].map(
-        (label, i) => ({ label, value: values?.[i] ?? null }),
-    )
+export function reputationRows(
+    rep: Reputation | null,
+): { key: keyof Reputation; label: string; value: number | null }[] {
+    const keys: (keyof Reputation)[] = ['people', 'state', 'underworld']
+    return keys.map((key) => ({ key, label: copy.reputation[key], value: rep?.[key] ?? null }))
 }

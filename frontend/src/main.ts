@@ -1,6 +1,9 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 
+// Self-hosted fonts (OFL), served from the app's own origin.
+import '@fontsource-variable/fredoka'
+import '@fontsource-variable/nunito'
 import './styles/tokens.css'
 import './styles/base.css'
 import './styles/layout.css'

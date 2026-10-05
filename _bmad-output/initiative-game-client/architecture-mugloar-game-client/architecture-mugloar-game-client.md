@@ -92,7 +92,8 @@ flowchart LR
   | `winPct(ad)` | `number \| null` | Integer percent per label (`recommendations.md`); `null` for unknown labels or unsolvable ads. |
   | `adKind(ad)` | `'bait' \| 'steal' \| 'infiltrate' \| 'investigate' \| 'other'` | From the decoded message (`recommendations.md`). |
   | `stateDelta(kind)` | `-2 \| 2 \| 1 \| 0` | Applied only on a successful solve. |
-  | `rankJobs(input)` | `RankedJob[]` | `{ ad, value, flag: 'trap' \| 'state-risk' \| null, best: boolean }` in display order. Never filters. |
+  | `adRiskTier(ad)` | tier | `riskTier` of the label; `unknown` for unsolvable ads. |
+  | `rankJobs(input)` | `RankedJob[]` | `{ ad, tier, winPct, value, flag: 'trap' \| 'state-risk' \| null, best: boolean }` in display order. `value` is `null` for traps and unknown odds. Never filters. |
   | `recommendItem(input)` | `{ itemId: string; reason: 'low-lives' \| 'level-up' } \| null` | Tree v3.4 steps 3–6. |
   | `itemAdvice(item)` | `'plus2' \| 'plus1-not-worth' \| 'potion' \| null` | From `itemEffect`. |
   | `shelfOrder(items)` | `ShopItem[]` | Cost ascending, then API response order. The shop view and `recommendItem` tie-breaks both use it. |
@@ -276,9 +277,9 @@ flowchart LR
 - **Binds:** CAP-8, CAP-15
 - **Prevents:** breakpoints written as if 1rem = 10px, and nested scroll regions fighting the page scroll. Inside media queries, rem uses the initial font size, normally 16px [V, Media Queries 4].
 - **Rule:**
-  - `html { font-size: 62.5% }`, and every length uses `rem`, including media queries. `px` is allowed only for hairlines (1px borders).
+  - `html { font-size: 62.5% }`, and every length uses `rem`, including media queries. `px` is allowed only for hairlines (1px borders). `em` is allowed only for inline icon sizing that must follow the surrounding text.
   - Layout is mobile-first with `min-width` queries.
-  - Breakpoints are declared once, annotated with their px value at 16px (for example `48rem /* 768px */`).
+  - Breakpoints are declared once, annotated with their px value at 16px (for example `48rem /* 768px */`). Component `@container` queries resolve rem against the 62.5% root, so they are annotated at 10px (for example `64rem /* 640px */`).
   - Game screen layout, in the global layout stylesheet:
     - From 48rem up: a fixed-height grid, `height: 100dvh` (dvh: Chrome 108, Firefox 101, Safari 15.4 [V MDN compat data 2026-10-02]; Vite 8's default target is newer, so no `vh` fallback), rows `auto / minmax(0, 1fr) / var(--log-height) / auto` (top bar, routed view, log, credits line). `--log-height: 10rem`. There are exactly two scroll regions, the routed view and the log (`overflow-y: auto` each); the page never scrolls.
     - Below 48rem: the page scrolls. The top bar (stats, reputation, Risk level switch, navigation) is a direct child of the game `<main>` with `position: sticky; top: 0`. The bottom bar (log plus the credits line) is its last child with `position: sticky; bottom: 0`; the log has height `var(--log-height-mobile)` (`5rem`) and its own scroll. The tokens keep the two bars under half the viewport at 360 × 640 px.

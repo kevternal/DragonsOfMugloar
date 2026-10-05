@@ -1,10 +1,18 @@
 <script setup lang="ts">
 import { copy, reputationRows } from '@/copy'
 import type { Reputation } from '@/game/types'
+import GameIcon, { type IconName } from './GameIcon.vue'
 import StatValue from './StatValue.vue'
 
 const props = defineProps<{ reputation: Reputation | null; disabled: boolean }>()
 defineEmits<{ investigate: [] }>()
+
+// Decorative; the text labels stay (AD-15).
+const icons: Record<keyof Reputation, IconName> = {
+    people: 'person',
+    state: 'crown',
+    underworld: 'hood',
+}
 </script>
 
 <template>
@@ -12,9 +20,11 @@ defineEmits<{ investigate: [] }>()
          aria-label, not a heading, so the panel's <h1> stays the first heading. -->
     <section class="reputation" :aria-label="copy.reputation.label">
         <dl>
-            <div v-for="row in reputationRows(props.reputation)" :key="row.label" class="row">
+            <div v-for="row in reputationRows(props.reputation)" :key="row.key" class="row">
                 <dt>{{ row.label }}</dt>
-                <dd><StatValue :value="row.value" /></dd>
+                <dd>
+                    <GameIcon :name="icons[row.key]" class="icon" /><StatValue :value="row.value" />
+                </dd>
             </div>
         </dl>
         <button type="button" :disabled="props.disabled" @click="$emit('investigate')">
@@ -49,8 +59,16 @@ dt {
 }
 
 dd {
-    font-weight: bold;
+    display: flex;
+    gap: var(--space-1);
+    align-items: center;
+    font-family: var(--font-display);
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
+}
+
+.icon {
+    color: var(--color-accent);
 }
 
 button {

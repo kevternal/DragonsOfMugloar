@@ -1,10 +1,11 @@
-import { ref } from 'vue'
+import { computed, readonly, ref } from 'vue'
 import { defineStore } from 'pinia'
 import * as api from '@/api/client'
 import { ApiError } from '@/api/client'
 import type { AdDto, ItemDto, StartDto } from '@/api/types'
 import { applyTurn } from '@/game/apply-turn'
 import { decodeAd } from '@/game/decode'
+import { rankJobs, stateDelta } from '@/game/recommendations'
 import { affordability } from '@/game/shop'
 import type {
     Ad,
@@ -57,6 +58,19 @@ export const useGameStore = defineStore('game', () => {
     const pending = ref(false)
     const error = ref<GameError | null>(null)
     const expiredNotice = ref(false)
+    // AD-6: sum of stateDelta over this game's successful solves, replaced by each reputation
+    // reading. Never persisted; 0 while unknown, as the tree treats it.
+    const stateEstimate = ref(0)
+
+    // AD-6, AD-4: the jobs board in display order, with flags and the best pick.
+    const rankedJobs = computed(() =>
+        rankJobs({
+            gold: stats.value.gold,
+            board: board.value,
+            shop: shop.value,
+            stateEstimate: stateEstimate.value,
+        }),
+    )
 
     // Guards start/load, which have no gameId to compare before their first response.
     let epoch = 0
@@ -103,6 +117,7 @@ export const useGameStore = defineStore('game', () => {
         reputation.value = null
         log.value = []
         seq = 0
+        stateEstimate.value = 0
         pending.value = false
         error.value = null
     }
@@ -132,7 +147,7 @@ export const useGameStore = defineStore('game', () => {
         before: Stats,
         response: object,
         info: TurnInfo,
-        incrementTurn: boolean,
+        { incrementTurn = false, stateChange = 0 }: TurnEffects,
     ): void {
         const { stats: next, deltas } = applyTurn(before, response as TurnResponse, incrementTurn)
 
@@ -141,13 +156,25 @@ export const useGameStore = defineStore('game', () => {
         log.value.push({ seq, turn: next.turn, ...info, deltas })
 
         // The top bar shows the new values together with the log entry, not after the refetch.
+        // A reading replaces the state estimate; any other turn adds its change.
         if (info.kind === 'reputation') {
             reputation.value = info.reputation
+            stateEstimate.value = info.reputation.state
+        } else {
+            stateEstimate.value += stateChange
         }
 
         if (next.lives === 0) {
             status.value = 'over'
         }
+    }
+
+    /** What a turn changes besides its log entry (AD-7 step 5). */
+    interface TurnEffects {
+        /** Reputation returns no turn, so it adds +1 locally when the turn is known. */
+        incrementTurn?: boolean
+        /** The state estimate change of this response; applied with the log entry. */
+        stateChange?: number
     }
 
     // ---- Board (AD-18) ------------------------------------------------------
@@ -299,7 +326,7 @@ export const useGameStore = defineStore('game', () => {
     async function runTurn<R extends object>(
         call: () => Promise<R>,
         describe: (response: R) => TurnInfo,
-        incrementTurn = false,
+        effects: (response: R) => TurnEffects = () => ({}),
     ): Promise<R | null> {
         if (pending.value || gameId.value === null) {
             return null
@@ -317,7 +344,7 @@ export const useGameStore = defineStore('game', () => {
                 return null
             }
 
-            recordTurn(before, response, describe(response), incrementTurn)
+            recordTurn(before, response, describe(response), effects(response))
             return response
         } catch (e) {
             if (isCurrent(id)) {
@@ -338,6 +365,9 @@ export const useGameStore = defineStore('game', () => {
             return
         }
 
+        // Captured before the await, like the display text (AD-7).
+        const delta = stateDelta(ad.message)
+
         await runTurn(
             () => api.solveAd(id, ad.adId),
             (r) => ({
@@ -346,6 +376,7 @@ export const useGameStore = defineStore('game', () => {
                 success: r.success,
                 message: r.message,
             }),
+            (r) => ({ stateChange: r.success ? delta : 0 }),
         )
     }
 
@@ -377,7 +408,7 @@ export const useGameStore = defineStore('game', () => {
         await runTurn(
             () => api.investigateReputation(id),
             (r) => ({ kind: 'reputation', reputation: r }),
-            true,
+            () => ({ incrementTurn: true }),
         )
     }
 
@@ -452,6 +483,9 @@ export const useGameStore = defineStore('game', () => {
         pending,
         error,
         expiredNotice,
+        // Read-only outside the store: only turns change it (AD-7).
+        stateEstimate: readonly(stateEstimate),
+        rankedJobs,
         start,
         load,
         solve,

@@ -489,4 +489,173 @@ describe('game store', () => {
             expect(game.log.map((e) => e.seq)).toEqual([1])
         })
     })
+
+    describe('state estimate and ranked jobs (AD-6, AD-7, CAP-16)', () => {
+        const kindAds = [
+            {
+                adId: 'inf',
+                message: 'Infiltrate the guild',
+                reward: 10,
+                expiresIn: 2,
+                encrypted: null,
+                probability: 'Sure thing',
+            },
+            {
+                adId: 'st',
+                message: 'Steal a goat from Ann',
+                reward: 90,
+                expiresIn: 2,
+                encrypted: null,
+                probability: 'Sure thing',
+            },
+            {
+                adId: 'job',
+                message: 'Help the baker',
+                reward: 5,
+                expiresIn: 2,
+                encrypted: null,
+                probability: 'Gamble',
+            },
+        ]
+        const solveResult = (success: boolean) =>
+            json({
+                success,
+                lives: 3,
+                gold: 100,
+                score: 1,
+                highScore: 0,
+                turn: 1,
+                message: success ? 'Done' : 'Failed',
+            })
+        const solveWon = () => solveResult(true)
+        const solveLost = () => solveResult(false)
+
+        it('a successful infiltrate +2, a failed steal unchanged, a reading replaces it', async () => {
+            let messageCalls = 0
+            let release: () => void = () => undefined
+            stubApi({
+                ...base,
+                // The first refetch after the infiltrate is held, to see the estimate change
+                // in the same step as the log entry, before the refetch returns.
+                'GET /g1/messages': () =>
+                    messageCalls++ === 1
+                        ? new Promise<Response>(
+                              (resolve) => (release = () => resolve(json(kindAds))),
+                          )
+                        : json(kindAds),
+                'POST /g1/solve/inf': solveWon,
+                'POST /g1/solve/st': solveLost,
+                'POST /g1/investigate/reputation': () =>
+                    json({ people: 1, state: -3, underworld: 0 }),
+            })
+            const game = useGameStore()
+            await game.start()
+            expect(game.stateEstimate).toBe(0)
+
+            const turn = game.solve('inf')
+            await vi.waitFor(() => expect(game.log).toHaveLength(1))
+            expect(game.pending).toBe(true)
+            expect(game.stateEstimate).toBe(2)
+            release()
+            await turn
+
+            await game.solve('st')
+            expect(game.log).toHaveLength(2)
+            expect(game.stateEstimate).toBe(2)
+
+            await game.investigateReputation()
+            expect(game.stateEstimate).toBe(-3)
+        })
+
+        it('a successful steal −2; a failed API call changes nothing', async () => {
+            let attempts = 0
+            stubApi({
+                ...base,
+                'GET /g1/messages': () => json(kindAds),
+                'POST /g1/solve/st': () =>
+                    attempts++ === 0 ? new Response('x', { status: 500 }) : solveWon(),
+            })
+            const game = useGameStore()
+            await game.start()
+            await game.solve('st')
+            expect(game.stateEstimate).toBe(0)
+            await game.solve('st')
+            expect(game.stateEstimate).toBe(-2)
+        })
+
+        it('start() and load() of another id reset the estimate to 0', async () => {
+            let starts = 0
+            const withKinds = (id: string) => ({
+                [`GET /${id}/shop`]: () => json(items),
+                [`GET /${id}/messages`]: () => json(kindAds),
+                [`POST /${id}/solve/inf`]: solveWon,
+            })
+            stubApi({
+                ...base,
+                ...withKinds('g1'),
+                ...withKinds('g2'),
+                ...withKinds('g3'),
+                'POST /game/start': () =>
+                    json({ ...startBody, gameId: starts++ === 0 ? 'g1' : 'g2' }),
+            })
+            const game = useGameStore()
+            await game.start()
+            await game.solve('inf')
+            expect(game.stateEstimate).toBe(2)
+
+            await game.start()
+            expect(game.stateEstimate).toBe(0)
+            await game.solve('inf')
+            expect(game.stateEstimate).toBe(2)
+
+            await game.load('g3')
+            expect(game.stateEstimate).toBe(0)
+        })
+
+        it('rankedJobs follows the board and a reputation reading', async () => {
+            stubApi({
+                ...base,
+                'GET /g1/messages': () => json(kindAds),
+                'POST /g1/investigate/reputation': () =>
+                    json({ people: 0, state: -7, underworld: 0 }),
+            })
+            const game = useGameStore()
+            await game.start()
+            game.stats.gold = 500 // above the potion, so no broke exception
+            const order = () => game.rankedJobs.map((j) => j.ad.adId)
+            expect(order()).toEqual(['st', 'inf', 'job'])
+            expect(game.rankedJobs.find((j) => j.best)?.ad.adId).toBe('st')
+
+            await game.investigateReputation()
+            expect(game.stateEstimate).toBe(-7)
+            expect(order()).toEqual(['inf', 'job', 'st'])
+            expect(game.rankedJobs.find((j) => j.ad.adId === 'st')?.flag).toBe('state-risk')
+            expect(game.rankedJobs.find((j) => j.best)?.ad.adId).toBe('inf')
+        })
+
+        it('rankedJobs uses the gold and the shop: broke picks the safest ad', async () => {
+            const board = [
+                { ...kindAds[2], adId: 'top', reward: 900, probability: 'Walk in the park' },
+                { ...kindAds[2], adId: 'safe', reward: 5, probability: 'Piece of cake' },
+            ]
+            stubApi({ ...base, 'GET /g1/messages': () => json(board) })
+            const game = useGameStore()
+            await game.start() // gold 0, potion 50
+            expect(game.rankedJobs.find((j) => j.best)?.ad.adId).toBe('safe')
+            game.stats.gold = 50
+            expect(game.rankedJobs.find((j) => j.best)?.ad.adId).toBe('top')
+        })
+
+        it('rankedJobs with unknown gold has no broke exception', async () => {
+            const board = [
+                { ...kindAds[2], adId: 'top', reward: 900, probability: 'Walk in the park' },
+                { ...kindAds[2], adId: 'safe', reward: 5, probability: 'Piece of cake' },
+            ]
+            stubApi({ ...base, 'GET /g1/messages': () => json(board) })
+            const game = useGameStore()
+            await game.load('g1') // no save: stats unknown
+            expect(game.stats.gold).toBeNull()
+            expect(game.rankedJobs.find((j) => j.best)?.ad.adId).toBe('top')
+        })
+    })
 })

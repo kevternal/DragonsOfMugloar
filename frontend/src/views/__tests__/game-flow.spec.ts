@@ -1,11 +1,25 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { ads, html404, items, json, startBody, stubApi } from '@/__tests__/stub-api'
 import App from '@/App.vue'
 import { routes } from '@/router'
+import { copy } from '@/copy'
 import { useGameStore } from '@/stores/game'
+
+type DOMWrapperLike = { attributes: (name: string) => string | undefined; element: Element }
+
+/** A button's accessible name: its aria-label, else its content without aria-hidden parts. */
+function accessibleName(b: DOMWrapperLike): string {
+    const label = b.attributes('aria-label')
+    if (label !== undefined) {
+        return label
+    }
+    const content = b.element.cloneNode(true) as Element
+    content.querySelectorAll('[aria-hidden="true"]').forEach((n) => n.remove())
+    return (content.textContent ?? '').replace(/\s+/g, ' ').trim()
+}
 
 async function mountAt(path: string, pinia = createPinia()) {
     const router = createRouter({ history: createMemoryHistory(), routes })
@@ -58,7 +72,7 @@ describe('game flow', () => {
         const { router, wrapper } = await mountAt('/')
         await wrapper.get('button').trigger('click')
         await flushPromises()
-        const solve = wrapper.findAll('button').find((b) => b.text().startsWith('Solve'))
+        const solve = wrapper.findAll('button').find((b) => accessibleName(b).startsWith('Solve'))
         await solve?.trigger('click')
         await flushPromises()
         expect(router.currentRoute.value.name).toBe('over')
@@ -91,7 +105,7 @@ describe('game flow', () => {
         type Wrapper = Awaited<ReturnType<typeof mountAt>>['wrapper']
         const h1s = (w: Wrapper) => w.findAll('h1').map((h) => h.text())
         const button = (w: Wrapper, name: string) => {
-            const found = w.findAll('button').find((b) => b.text().startsWith(name))
+            const found = w.findAll('button').find((b) => accessibleName(b).startsWith(name))
             if (!found) {
                 throw new Error(`No button named ${name}`)
             }
@@ -212,6 +226,137 @@ describe('game flow', () => {
             expect(wrapper.text()).toContain('Nothing has happened yet.')
         })
 
+        it('the credits name each icon author, the site and the licence', async () => {
+            boardAndShop()
+            const { wrapper } = await mountAt('/game/g1/ads')
+            const credits = wrapper.get('.credits').text()
+            for (const part of ['Lorc', 'Delapouite', 'Sbed', 'game-icons.net', 'CC BY 3.0']) {
+                expect(credits).toContain(part)
+            }
+        })
+
+        it('the jobs board lists ranked rows with Best pick, Trap and state-risk badges', async () => {
+            const board = [
+                {
+                    adId: 'bait',
+                    message: 'Steal super awesome diamond ring from Bob',
+                    reward: 900,
+                    expiresIn: 3,
+                    encrypted: null,
+                    probability: 'Sure thing',
+                },
+                {
+                    adId: 'steal',
+                    message: 'Steal a goat from Ann',
+                    reward: 300,
+                    expiresIn: 3,
+                    encrypted: null,
+                    probability: 'Piece of cake',
+                },
+                {
+                    adId: 'low',
+                    message: 'Mend the fence',
+                    reward: 5,
+                    expiresIn: 3,
+                    encrypted: null,
+                    probability: 'Gamble',
+                },
+                {
+                    adId: 'top',
+                    message: 'Escort the mayor',
+                    reward: 80,
+                    expiresIn: 3,
+                    encrypted: null,
+                    probability: 'Walk in the park',
+                },
+                {
+                    adId: 'odd',
+                    message: 'Count the sheep',
+                    reward: 70,
+                    expiresIn: 3,
+                    encrypted: null,
+                    probability: 'Maybe?',
+                },
+                {
+                    adId: 'locked',
+                    message: 'Fher gur oevqtr',
+                    reward: 40,
+                    expiresIn: 3,
+                    encrypted: 9,
+                    probability: 'Evfxl',
+                },
+            ]
+            const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+            boardAndShop({ 'GET /g1/messages': () => json(board) })
+            const { wrapper } = await mountAt('/game/g1/ads')
+            const list = wrapper.get('section[aria-labelledby="ads-heading"] [role="list"]')
+            const rows = list.findAll('li').map((li) => accessibleName(li.get('button')))
+            expect(rows).toEqual([
+                'Solve: moderate, Walk in the park, 87%, Best pick. Escort the mayor. 80 gold, 3 turns left',
+                'Solve: risky, Gamble, 55%. Mend the fence. 5 gold, 3 turns left',
+                'Solve: safe, Piece of cake, 95%, Angers the state. Steal a goat from Ann. 300 gold, 3 turns left',
+                'Solve: unknown risk, Evfxl, unknown odds. Fher gur oevqtr. 40 gold, 3 turns left',
+                'Solve: unknown risk, Maybe?, unknown odds. Count the sheep. 70 gold, 3 turns left',
+                'Solve: safe, Sure thing, 100%, Trap. Steal super awesome diamond ring from Bob. 900 gold, 3 turns left',
+            ])
+            const locked = list.findAll('li')[3]!
+            expect(locked.get('button').attributes('disabled')).toBeDefined()
+            const noteId = locked.get('button').attributes('aria-describedby')
+            expect(locked.get(`#${noteId}`).text()).toContain('cannot be solved')
+            expect(list.findAll('li')[4]!.get('button').attributes('disabled')).toBeUndefined()
+            expect(wrapper.text()).toContain('Best jobs first.')
+            warn.mockRestore()
+        })
+
+        it('a reputation reading at state −7 flags a steal as angering the state', async () => {
+            const board = [
+                {
+                    adId: 'steal',
+                    message: 'Steal a goat from Ann',
+                    reward: 300,
+                    expiresIn: 3,
+                    encrypted: null,
+                    probability: 'Piece of cake',
+                },
+                {
+                    adId: 'plain',
+                    message: 'Mend the fence',
+                    reward: 5,
+                    expiresIn: 3,
+                    encrypted: null,
+                    probability: 'Gamble',
+                },
+            ]
+            boardAndShop({
+                'GET /g1/messages': () => json(board),
+                'POST /g1/investigate/reputation': () =>
+                    json({ people: 0, state: -7, underworld: 0 }),
+            })
+            const { wrapper } = await mountAt('/game/g1/ads')
+            const names = () =>
+                wrapper
+                    .get('[role="list"]')
+                    .findAll('li')
+                    .map((li) => accessibleName(li.get('button')))
+            expect(names()[0]).toContain('Steal a goat')
+            expect(names().join()).not.toContain('Angers the state')
+            await button(wrapper, 'Investigate reputation').trigger('click')
+            await flushPromises()
+            expect(names()[0]).toContain('Mend the fence')
+            expect(names()[1]).toContain('Angers the state. Steal a goat from Ann.')
+        })
+
+        it('solving a row sends that ad', async () => {
+            const calls = boardAndShop({ 'POST /g1/solve/a1': solveOk })
+            const { wrapper } = await mountAt('/game/g1/ads')
+            const row = wrapper
+                .findAll('button')
+                .find((b) => accessibleName(b).includes('. Job one. '))
+            await row?.trigger('click')
+            await flushPromises()
+            expect(calls).toContain('POST /g1/solve/a1')
+        })
+
         it('/over hides the top bar but keeps the log', async () => {
             const { wrapper } = await playToGameOver()
             expect(h1s(wrapper)).toEqual(['Game over'])
@@ -230,8 +375,7 @@ describe('game flow', () => {
         })
 
         it('shows the credits line exactly once on every screen', async () => {
-            const credits = (w: Wrapper) =>
-                w.text().split('A Dragons of Mugloar client.').length - 1
+            const credits = (w: Wrapper) => w.text().split(copy.credits).length - 1
             const { wrapper: over } = await playToGameOver()
             expect(credits(over)).toBe(1)
             for (const path of ['/', '/game/g1/ads', '/game/g1/shop']) {

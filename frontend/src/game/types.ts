@@ -56,3 +56,22 @@ export interface GameError {
 
 /** The fields of a turn response that may carry stats; absent fields stay unchanged. */
 export type TurnResponse = Partial<Record<StatKey, number>>
+
+/** Risk tier from the `probability` label (risk-cues.md). */
+export type RiskTier = 'safe' | 'moderate' | 'risky' | 'deadly' | 'unknown'
+
+/** A row flag (CAP-16): bait, or a steal left out by the state guard. */
+export type JobFlag = 'trap' | 'state-risk'
+
+/**
+ * One jobs-board row in display order (AD-4, `rankJobs`). `value` is `null` when the win
+ * rate is unknown; `tier` and `winPct` are carried so the row never re-derives them.
+ */
+export interface RankedJob {
+    ad: Ad
+    tier: RiskTier
+    winPct: number | null
+    value: number | null
+    flag: JobFlag | null
+    best: boolean
+}
