@@ -4,16 +4,14 @@ import BoardNotice from '@/components/BoardNotice.vue'
 import { copy } from '@/copy'
 import { useGameStore } from '@/stores/game'
 
-defineProps<{ active: boolean }>()
-
 const game = useGameStore()
 </script>
 
 <template>
-    <section class="panel" :class="{ 'panel--inactive': !active }" aria-labelledby="ads-heading">
-        <component :is="active ? 'h1' : 'h2'" id="ads-heading" :tabindex="active ? -1 : undefined">
+    <section aria-labelledby="ads-heading">
+        <h1 id="ads-heading" tabindex="-1">
             {{ copy.ads.heading }}
-        </component>
+        </h1>
         <BoardNotice
             v-if="game.boardStale"
             :refreshing="game.pending"

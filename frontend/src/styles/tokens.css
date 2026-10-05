@@ -12,6 +12,7 @@
     --color-error-bg: #fdeaea;
     --color-error-text: #8a1c1c;
     --color-notice-bg: #fff4d6;
+    --color-success: #2e6b2e;
 
     --space-1: 0.4rem;
     --space-2: 0.8rem;
@@ -24,5 +25,17 @@
     --font-size-xl: 2.8rem;
 
     --radius: 0.6rem;
+    /* Compact controls in the top bar; above the 2.4rem minimum (WCAG 2.2 SC 2.5.8). */
+    --control-height-compact: 3.2rem;
     --max-width: 120rem;
+
+    /* Activity log height (AD-14): a grid row from 48rem up, a sticky strip below. */
+    --log-height: 10rem;
+    --log-height-mobile: 5.4rem;
+    --log-height-expanded: min(40dvh, 32rem);
+
+    /* Focus ring (AD-15); its reach is width + offset, used for scroll padding (AD-14). */
+    --focus-ring-width: 0.3rem;
+    --focus-ring-offset: 0.2rem;
+    --focus-ring-reach: calc(var(--focus-ring-width) + var(--focus-ring-offset));
 }

@@ -13,4 +13,5 @@ const app = createApp(App)
 app.use(createPinia())
 app.use(router)
 
-app.mount('#app')
+// Mount after the first navigation so route meta (e.g. gameScreen) is known on first paint.
+void router.isReady().then(() => app.mount('#app'))

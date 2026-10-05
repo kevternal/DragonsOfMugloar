@@ -16,7 +16,7 @@ describe('ShopPanel', () => {
         const pinia = createPinia()
         setActivePinia(pinia)
         await useGameStore().start()
-        const wrapper = mount(ShopPanel, { global: { plugins: [pinia] }, props: { active: true } })
+        const wrapper = mount(ShopPanel, { global: { plugins: [pinia] } })
         expect(wrapper.text()).not.toContain('The shelves are empty')
         const button = wrapper.get('button')
         expect(button.text()).toBe('Check the shop again')

@@ -83,7 +83,7 @@ describe('game store', () => {
         expect(calls.some((c) => c.includes('/solve/'))).toBe(false)
     })
 
-    it('solve success merges stats, sets lastTurn, refetches the board', async () => {
+    it('solve success merges stats, appends to the log, refetches the board', async () => {
         const calls = stubApi({
             ...base,
             'POST /g1/solve/a1': () =>
@@ -101,13 +101,17 @@ describe('game store', () => {
         await game.start()
         await game.solve('a1')
         expect(game.stats).toMatchObject({ gold: 251, score: 30, turn: 1, level: 0 })
-        expect(game.lastTurn).toEqual({
-            kind: 'solve',
-            adMessage: 'Job one',
-            success: true,
-            message: 'Done!',
-            deltas: { lives: 0, gold: 251, score: 30, turn: 1 },
-        })
+        expect(game.log).toEqual([
+            {
+                seq: 1,
+                turn: 1,
+                kind: 'solve',
+                adMessage: 'Job one',
+                success: true,
+                message: 'Done!',
+                deltas: { lives: 0, gold: 251, score: 30, turn: 1 },
+            },
+        ])
         expect(calls.filter((c) => c === 'GET /g1/messages')).toHaveLength(2)
         expect(game.pending).toBe(false)
     })
@@ -181,11 +185,35 @@ describe('game store', () => {
         await game.buy('hpot')
         expect(game.stats.score).toBe(12)
         expect(game.stats.gold).toBe(0)
-        expect(game.lastTurn).toMatchObject({
+        expect(game.log).toHaveLength(1)
+        expect(game.log[0]).toMatchObject({
+            seq: 1,
+            turn: 1,
             kind: 'buy',
             itemName: 'Healing potion',
             success: true,
         })
+    })
+
+    it('reputation: shown together with its log entry, before the board refetch', async () => {
+        let releaseBoard: (r: Response) => void = () => undefined
+        let messageCalls = 0
+        stubApi({
+            ...base,
+            'GET /g1/messages': () =>
+                messageCalls++ === 0
+                    ? json(ads)
+                    : new Promise<Response>((resolve) => (releaseBoard = resolve)),
+            'POST /g1/investigate/reputation': () => json({ people: 1, state: 2, underworld: 3 }),
+        })
+        const game = useGameStore()
+        await game.start()
+        const turn = game.investigateReputation()
+        await vi.waitFor(() => expect(messageCalls).toBe(2))
+        expect(game.log).toHaveLength(1)
+        expect(game.reputation).toEqual({ people: 1, state: 2, underworld: 3 })
+        releaseBoard(json(ads))
+        await turn
     })
 
     it('reputation: stores values and increments turn locally', async () => {
@@ -199,7 +227,15 @@ describe('game store', () => {
         await game.investigateReputation()
         expect(game.reputation).toEqual({ people: 4.9, state: -4, underworld: 0 })
         expect(game.stats.turn).toBe(1)
-        expect(game.lastTurn).toMatchObject({ kind: 'reputation', deltas: { turn: 1 } })
+        expect(game.log).toEqual([
+            {
+                seq: 1,
+                turn: 1,
+                kind: 'reputation',
+                reputation: { people: 4.9, state: -4, underworld: 0 },
+                deltas: { turn: 1 },
+            },
+        ])
     })
 
     it('solve 404 is not expiry; the refetch decides', async () => {
@@ -209,7 +245,7 @@ describe('game store', () => {
         await game.solve('a1')
         expect(game.status).toBe('playing')
         expect(game.error).toEqual({ kind: 'not-found', status: 404 })
-        expect(game.lastTurn).toBeNull()
+        expect(game.log).toEqual([])
     })
 
     it('messages 404 after a turn means expired', async () => {
@@ -335,7 +371,7 @@ describe('game store', () => {
         await Promise.all([solving, loading])
         expect(game.gameId).toBe('g2')
         expect(game.stats.gold).toBeNull()
-        expect(game.lastTurn).toBeNull()
+        expect(game.log).toEqual([])
     })
 
     it('shop failure sets shopFailed; refreshShop retries and clears it', async () => {
@@ -372,5 +408,85 @@ describe('game store', () => {
         await game.refreshShop()
         expect(game.status).toBe('expired')
         expect(game.pending).toBe(false)
+    })
+
+    describe('activity log (AD-7)', () => {
+        const solveOk = (turn: number, message: string) => () =>
+            json({
+                success: true,
+                lives: 3,
+                gold: turn * 10,
+                score: turn,
+                highScore: 0,
+                turn,
+                message,
+            })
+
+        it('appends one entry per turn with seq and the turn from the response', async () => {
+            let turn = 8
+            stubApi({ ...base, 'POST /g1/solve/a1': () => solveOk(++turn, `msg ${turn}`)() })
+            const game = useGameStore()
+            await game.start()
+            await game.solve('a1')
+            await game.solve('a1')
+            expect(game.log.map((e) => [e.seq, e.turn, e.kind])).toEqual([
+                [1, 9, 'solve'],
+                [2, 10, 'solve'],
+            ])
+            expect(game.log[1]).toMatchObject({ message: 'msg 10', adMessage: 'Job one' })
+        })
+
+        it('keeps turn null when the turn is unknown', async () => {
+            stubApi({
+                ...base,
+                'POST /g1/investigate/reputation': () =>
+                    json({ people: 1, state: 2, underworld: 3 }),
+            })
+            const game = useGameStore()
+            await game.load('g1') // no save: stats unknown
+            await game.investigateReputation()
+            expect(game.log).toHaveLength(1)
+            expect(game.log[0]).toMatchObject({ seq: 1, turn: null, kind: 'reputation' })
+        })
+
+        it('a failed turn appends nothing and sets the error', async () => {
+            stubApi({ ...base, 'POST /g1/solve/a1': () => new Response('x', { status: 500 }) })
+            const game = useGameStore()
+            await game.start()
+            await game.solve('a1')
+            expect(game.log).toEqual([])
+            expect(game.error).toEqual({ kind: 'http', status: 500 })
+        })
+
+        it('start() and load() of another id clear the log and restart seq', async () => {
+            let starts = 0
+            stubApi({
+                ...base,
+                'POST /game/start': () =>
+                    json({ ...startBody, gameId: starts++ === 0 ? 'g1' : 'g2' }),
+                'GET /g2/shop': () => json(items),
+                'GET /g2/messages': () => json(ads),
+                'GET /g3/shop': () => json(items),
+                'GET /g3/messages': () => json(ads),
+                'POST /g1/solve/a1': solveOk(1, 'one'),
+                'POST /g2/solve/a1': solveOk(1, 'two'),
+                'POST /g3/solve/a1': solveOk(1, 'three'),
+            })
+            const game = useGameStore()
+            await game.start()
+            await game.solve('a1')
+            expect(game.log).toHaveLength(1)
+
+            await game.start()
+            expect(game.gameId).toBe('g2')
+            expect(game.log).toEqual([])
+            await game.solve('a1')
+            expect(game.log.map((e) => e.seq)).toEqual([1])
+
+            await game.load('g3')
+            expect(game.log).toEqual([])
+            await game.solve('a1')
+            expect(game.log.map((e) => e.seq)).toEqual([1])
+        })
     })
 })

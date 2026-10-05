@@ -1,6 +1,11 @@
 // Every player-facing string lives here, in tavern voice. Buttons state the plain action.
 import type { GameError, Reputation, StatKey } from '@/game/types'
 
+const livesWord = (n: number) => (n === 1 ? 'life' : 'lives')
+
+/** Signed number with a true minus sign, e.g. "−2". */
+const signed = (n: number) => (n < 0 ? `−${-n}` : String(n))
+
 export const copy = {
     title: 'Dragons of Mugloar',
     start: {
@@ -23,7 +28,8 @@ export const copy = {
         score: 'Score',
         turn: 'Turn',
         unknown: 'unknown',
-    } satisfies Record<StatKey | 'heading' | 'unknown', string>,
+        unknownShort: '?',
+    } satisfies Record<StatKey | 'heading' | 'unknown' | 'unknownShort', string>,
     ads: {
         heading: 'Message board',
         empty: 'The board is bare. Nothing is posted right now.',
@@ -47,36 +53,34 @@ export const copy = {
         cost: 'Cost',
         buy: 'Buy',
         effectLevel: (n: number) => `Raises your dragon's level by ${n}`,
-        effectLife: (n: number) => `Restores ${n} ${n === 1 ? 'life' : 'lives'}`,
+        effectLife: (n: number) => `Restores ${n} ${livesWord(n)}`,
         shortfall: (n: number) => `You need ${n} more gold.`,
     },
     reputation: {
-        heading: 'Reputation',
+        label: 'Reputation',
         button: 'Investigate reputation (costs one turn)',
         people: 'People',
         state: 'State',
         underworld: 'Underworld',
-        none: 'You have not asked around yet.',
     },
-    lastTurn: {
-        heading: 'Last turn',
+    log: {
+        label: 'Activity',
         none: 'Nothing has happened yet.',
-        solved: (ad: string) => `You took the job: ${ad}`,
-        bought: (item: string) => `You bought: ${item}`,
-        boughtOk: 'The purchase went through.',
-        boughtFail: 'The purchase failed.',
-        asked: 'You asked around about your reputation.',
-        success: 'Success',
-        failure: 'Failure',
-        changes: 'Changes',
-        noChanges: 'No changes to show.',
-        deltaLabels: {
-            lives: 'lives',
-            gold: 'gold',
-            score: 'score',
-            level: 'level',
-            turn: 'turn',
-        } satisfies Record<StatKey, string>,
+        // The visual text is short; the visually hidden text carries separators for speech.
+        turn: (n: number | null) => (n === null ? 'T?' : `T${n}`),
+        turnSpoken: (n: number | null) => (n === null ? 'Turn unknown, ' : `Turn ${n}, `),
+        markOk: '✓',
+        markFail: '✗',
+        succeeded: 'succeeded: ',
+        failed: 'failed: ',
+        deltasSpoken: ', ',
+        bought: (item: string) => `Bought ${item}`,
+        asked: (rep: Reputation) =>
+            `Asked around: people ${signed(rep.people)}, state ${signed(rep.state)}, underworld ${signed(rep.underworld)}`,
+        units: { gold: () => 'gold', lives: livesWord } satisfies Record<
+            'gold' | 'lives',
+            (n: number) => string
+        >,
     },
     over: {
         heading: 'Game over',
@@ -92,7 +96,7 @@ export const copy = {
         notFound: 'That one is gone from the board. The board has been checked again.',
     },
     loading: 'Fetching your game...',
-    footer: 'A Dragons of Mugloar client.',
+    credits: 'A Dragons of Mugloar client.',
 }
 
 export function errorMessage(error: GameError): string {
@@ -101,15 +105,16 @@ export function errorMessage(error: GameError): string {
     return copy.errors.http
 }
 
-export function formatDelta(key: StatKey, value: number): string {
-    const sign = value > 0 ? '+' : value < 0 ? '−' : ''
-    return `${sign}${Math.abs(value)} ${copy.lastTurn.deltaLabels[key]}`
+/** CAP-12: the log shows only non-zero gold and lives changes, e.g. "+82 gold", "−1 life". */
+export function formatDelta(key: 'gold' | 'lives', value: number): string {
+    const size = Math.abs(value)
+    return `${value > 0 ? '+' : '−'}${size} ${copy.log.units[key](size)}`
 }
 
-export function reputationRows(rep: Reputation): { label: string; value: number }[] {
-    return [
-        { label: copy.reputation.people, value: rep.people },
-        { label: copy.reputation.state, value: rep.state },
-        { label: copy.reputation.underworld, value: rep.underworld },
-    ]
+/** CAP-5: the three values; `null` means unknown until first investigated. */
+export function reputationRows(rep: Reputation | null): { label: string; value: number | null }[] {
+    const values = rep === null ? null : [rep.people, rep.state, rep.underworld]
+    return [copy.reputation.people, copy.reputation.state, copy.reputation.underworld].map(
+        (label, i) => ({ label, value: values?.[i] ?? null }),
+    )
 }

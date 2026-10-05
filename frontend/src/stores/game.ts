@@ -10,11 +10,11 @@ import type {
     Ad,
     GameError,
     GameStatus,
-    LastTurn,
-    LastTurnInfo,
     Reputation,
     ShopItem,
     Stats,
+    TurnInfo,
+    TurnRecord,
     TurnResponse,
 } from '@/game/types'
 
@@ -53,13 +53,15 @@ export const useGameStore = defineStore('game', () => {
     const shop = ref<ShopItem[]>([])
     const shopFailed = ref(false)
     const reputation = ref<Reputation | null>(null)
-    const lastTurn = ref<LastTurn | null>(null)
+    const log = ref<TurnRecord[]>([])
     const pending = ref(false)
     const error = ref<GameError | null>(null)
     const expiredNotice = ref(false)
 
     // Guards start/load, which have no gameId to compare before their first response.
     let epoch = 0
+    // AD-7: per-game counter for log entries, used as the list key. Reset with the game.
+    let seq = 0
 
     // ---- Guards -------------------------------------------------------------
 
@@ -99,7 +101,8 @@ export const useGameStore = defineStore('game', () => {
         shop.value = []
         shopFailed.value = false
         reputation.value = null
-        lastTurn.value = null
+        log.value = []
+        seq = 0
         pending.value = false
         error.value = null
     }
@@ -124,17 +127,23 @@ export const useGameStore = defineStore('game', () => {
         shopFailed.value = false
     }
 
-    /** Applies a turn response to the stats and records it as the last turn (AD-7). */
+    /** Applies a turn response to the stats and appends it to the activity log (AD-7). */
     function recordTurn(
         before: Stats,
         response: object,
-        info: LastTurnInfo,
+        info: TurnInfo,
         incrementTurn: boolean,
     ): void {
         const { stats: next, deltas } = applyTurn(before, response as TurnResponse, incrementTurn)
 
         stats.value = next
-        lastTurn.value = { ...info, deltas } as LastTurn
+        seq += 1
+        log.value.push({ seq, turn: next.turn, ...info, deltas })
+
+        // The top bar shows the new values together with the log entry, not after the refetch.
+        if (info.kind === 'reputation') {
+            reputation.value = info.reputation
+        }
 
         if (next.lives === 0) {
             status.value = 'over'
@@ -289,7 +298,7 @@ export const useGameStore = defineStore('game', () => {
     /** AD-7: the one pipeline behind solve, buy, and reputation. */
     async function runTurn<R extends object>(
         call: () => Promise<R>,
-        describe: (response: R) => LastTurnInfo,
+        describe: (response: R) => TurnInfo,
         incrementTurn = false,
     ): Promise<R | null> {
         if (pending.value || gameId.value === null) {
@@ -365,15 +374,11 @@ export const useGameStore = defineStore('game', () => {
             return
         }
 
-        const result = await runTurn(
+        await runTurn(
             () => api.investigateReputation(id),
             (r) => ({ kind: 'reputation', reputation: r }),
             true,
         )
-
-        if (result !== null && isCurrent(id)) {
-            reputation.value = result
-        }
     }
 
     // ---- Player-triggered retries -------------------------------------------
@@ -443,7 +448,7 @@ export const useGameStore = defineStore('game', () => {
         shop,
         shopFailed,
         reputation,
-        lastTurn,
+        log,
         pending,
         error,
         expiredNotice,

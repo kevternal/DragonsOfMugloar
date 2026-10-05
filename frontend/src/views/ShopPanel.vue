@@ -3,16 +3,14 @@ import ShopItem from '@/components/ShopItem.vue'
 import { copy } from '@/copy'
 import { useGameStore } from '@/stores/game'
 
-defineProps<{ active: boolean }>()
-
 const game = useGameStore()
 </script>
 
 <template>
-    <section class="panel" :class="{ 'panel--inactive': !active }" aria-labelledby="shop-heading">
-        <component :is="active ? 'h1' : 'h2'" id="shop-heading" :tabindex="active ? -1 : undefined">
+    <section aria-labelledby="shop-heading">
+        <h1 id="shop-heading" tabindex="-1">
             {{ copy.shop.heading }}
-        </component>
+        </h1>
         <div v-if="game.shopFailed" class="notice">
             <p>{{ copy.shop.failed }}</p>
             <button type="button" :disabled="game.pending" @click="game.refreshShop()">

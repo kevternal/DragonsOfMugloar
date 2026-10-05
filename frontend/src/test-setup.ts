@@ -9,3 +9,17 @@ beforeEach(() => {
         }),
     )
 })
+
+/** jsdom has no ResizeObserver. This stub reports each observed element once, at once. */
+class ResizeObserverStub {
+    constructor(private readonly callback: ResizeObserverCallback) {}
+    observe(target: Element): void {
+        this.callback([{ target } as ResizeObserverEntry], this)
+    }
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => {
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub)
+})

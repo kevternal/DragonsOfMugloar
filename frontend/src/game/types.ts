@@ -29,16 +29,23 @@ export interface Reputation {
 
 export type Deltas = Partial<Record<StatKey, number>>
 
-export type LastTurn =
+/** `Omit` applied to each member of a union, so the members stay distinct. */
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
+
+/** What happened on one turn, without the log bookkeeping (AD-7). */
+type TurnOutcome =
     | { kind: 'solve'; adMessage: string; success: boolean; message: string; deltas: Deltas }
     | { kind: 'buy'; itemName: string; success: boolean; deltas: Deltas }
     | { kind: 'reputation'; reputation: Reputation; deltas: Deltas }
 
-export type LastTurnInfo = LastTurn extends infer T
-    ? T extends LastTurn
-        ? Omit<T, 'deltas'>
-        : never
-    : never
+/**
+ * One activity-log entry (AD-7). `seq` is a per-game counter used as the list key;
+ * `turn` is the turn after the action, `null` when unknown (AD-11).
+ */
+export type TurnRecord = { seq: number; turn: number | null } & TurnOutcome
+
+/** The display part of a turn that an action describes; the store adds deltas and bookkeeping. */
+export type TurnInfo = DistributiveOmit<TurnOutcome, 'deltas'>
 
 export type GameStatus = 'idle' | 'loading' | 'playing' | 'over' | 'expired'
 

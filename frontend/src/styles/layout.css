@@ -1,4 +1,9 @@
-/* The only breakpoint (AD-14) is 768px at a 16px root. Only this file has @media. */
+/*
+ * Viewport breakpoints (AD-14), declared only here, in rem at a 16px root:
+ *   width  48rem = 768px  -- stats and reputation side by side; fixed grid if tall enough
+ *   height 30rem = 480px  -- tall enough for sticky bars without covering the content
+ *   height 36rem = 576px  -- tall enough for the fixed desktop grid
+ */
 
 .page,
 .game {
@@ -7,16 +12,75 @@
     padding: var(--space-3);
 }
 
-.site-footer {
-    padding: var(--space-3);
+.site-footer,
+.credits {
+    padding: var(--space-2) var(--space-3);
     color: var(--color-muted);
     font-size: var(--font-size-s);
     text-align: center;
 }
 
+/*
+ * Game screen, mobile first. The page scrolls. The top bar and the bottom bar (log and
+ * credits) are direct children of the page-tall <main>, so they can stick to the edges.
+ * Sticky preconditions: no ancestor sets overflow hidden/auto/scroll; clip is safe.
+ */
 .game {
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: var(--space-3);
+    min-height: 100dvh;
+    overflow-x: clip;
+}
+
+.game-top,
+.game-bottom {
+    /* Contains the absolutely positioned visually hidden text. */
+    position: relative;
+    z-index: 1;
+    display: grid;
+    gap: var(--space-2);
+    background: var(--color-bg);
+}
+
+.game-top {
+    padding-block: var(--space-2);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.game-bottom {
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--color-border);
+}
+
+.game-view {
+    position: relative;
+    flex: 1 0 auto;
+}
+
+.game-bottom .credits {
+    padding: 0;
+}
+
+.activity-log {
+    position: relative;
+    height: var(--log-height-mobile);
+}
+
+/* Below the fixed grid, the slim log expands while focused (tap or Tab) so the newest
+   entry can be read in full, and collapses again on blur. */
+.activity-log:focus-within {
+    height: var(--log-height-expanded);
+}
+
+/* While collapsed, the newest entry's action and flavour each keep to one line so both
+   fit the slim log; expanding (or the desktop grid) shows the full text. */
+.activity-log:not(:focus-within) :is(.action, .flavour) {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
 }
 
 .game-nav {
@@ -25,26 +89,85 @@
     gap: var(--space-3);
 }
 
-.panels {
-    display: grid;
-    gap: var(--space-4);
+.game-nav a[aria-current='page'] {
+    color: var(--color-text);
+    font-weight: bold;
+    text-decoration: none;
 }
 
-.panel--inactive {
-    display: none;
+/* Sticky bars only when the viewport is tall enough not to be covered by them. */
+@media (min-height: 30rem /* 480px */) {
+    .game-top {
+        position: sticky;
+        top: 0;
+    }
+
+    .game-bottom {
+        position: sticky;
+        bottom: 0;
+    }
 }
 
+/* CAP-5: reputation beside the stats. */
 @media (min-width: 48rem /* 768px */) {
-    .panels {
-        grid-template-columns: 3fr 2fr;
-        align-items: start;
+    .game-top {
+        grid-template-columns: auto 1fr;
+        align-items: center;
+        column-gap: var(--space-3);
     }
 
-    .panel--inactive {
-        display: block;
+    .game-top > :not(.stats, .reputation) {
+        grid-column: 1 / -1;
+    }
+}
+
+/*
+ * Wide and tall: a fixed-height grid. Exactly two regions scroll, the routed view and the
+ * log; the page never does. The bottom bar dissolves into the grid rows. Shorter screens
+ * keep the scrolling layout above.
+ */
+@media (min-width: 48rem /* 768px */) and (min-height: 36rem /* 576px */) {
+    .game {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) var(--log-height) auto;
+        grid-template-areas:
+            'top'
+            'view'
+            'log'
+            'credits';
+        height: 100dvh;
+        min-height: 0;
     }
 
-    .game-nav {
-        display: none;
+    .game-top {
+        position: relative;
+        grid-area: top;
+    }
+
+    .game-view {
+        grid-area: view;
+        overflow-y: auto;
+        /* Room for focus outlines (0.3rem + 0.2rem offset), which the scroller would clip. */
+        padding: var(--space-2);
+    }
+
+    .game-bottom {
+        display: contents;
+    }
+
+    .game-bottom > .activity-log {
+        grid-area: log;
+        height: auto;
+    }
+
+    .activity-log:not(:focus-within) :is(.action, .flavour) {
+        display: revert;
+        overflow: visible;
+        -webkit-line-clamp: unset;
+        line-clamp: unset;
+    }
+
+    .game-bottom > .credits {
+        grid-area: credits;
     }
 }

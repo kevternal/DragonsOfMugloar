@@ -1,5 +1,10 @@
 html {
     font-size: 62.5%;
+    /* AD-14: focused controls never hide under the game screen's sticky bars (WCAG 2.2
+       SC 2.4.11, C43). GameView measures the bars; elsewhere both are 0. The focus ring's
+       reach is added so the outline clears the bars too, not just the control. */
+    scroll-padding-block: calc(var(--top-bar-height, 0rem) + var(--focus-ring-reach))
+        calc(var(--bottom-bar-height, 0rem) + var(--focus-ring-reach));
 }
 
 *,
@@ -67,8 +72,8 @@ a {
 }
 
 :focus-visible {
-    outline: 0.3rem solid var(--color-focus);
-    outline-offset: 0.2rem;
+    outline: var(--focus-ring-width) solid var(--color-focus);
+    outline-offset: var(--focus-ring-offset);
 }
 
 h1:focus {

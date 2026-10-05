@@ -3,7 +3,7 @@ title: 'Iteration A: game screen layout, routed views, activity log'
 type: 'feature'
 ticket: ''
 created: '2026-10-02'
-status: 'in-review'
+status: 'built'
 baseline_revision: '1f8d06b39d3bf2cb93064b9e91b23ac47d854b6a'
 route: 'full'
 route_source: 'auto'
@@ -38,6 +38,7 @@ context:
   - AD-14: grid rows `auto / minmax(0, 1fr) / var(--log-height) / auto`; mobile sticky top and bottom bars; the sticky preconditions; `scroll-padding-block`.
   - AD-15: `<section role="log" aria-live="polite">` around `<ol>`; set `scrollTop` instantly; `GameView` owns focus.
 - Only the newest log entry shows its flavour line.
+- Below the fixed grid (mobile), the log expands to about 40% of the viewport while focused (tap or Tab) and collapses on blur. User decision 2026-10-05, review finding 27.
 - Log tokens: `--log-height: 10rem` and `--log-height-mobile: 5rem`.
 - All player text goes in `src/copy.ts`.
 - Use rem only. Only `layout.css` holds viewport `@media` rules.
@@ -194,4 +195,8 @@ Patch verification (2026-10-02):
 | # | Finding | Verdict | Route | Evidence / action |
 |---|---|---|---|---|
 | 26 | The mobile focus ring tucks under the top bar by 0.41 px on Shift+Tab, because the scroll padding leaves no room for the ring | low | patch | Applied directly: `scroll-padding-block` adds `--focus-ring-reach`, and the ring width and offset are now tokens. |
-| 27 | Mobile log: long ad messages now wrap to about 9 lines in a 40 px scroller, so the flavour line is never visible without scrolling the log | medium | intent_gap | This trade-off stems from the 5rem log height and the "newest flavour only" choice in the frozen intent. The user decides. |
+| 27 | Mobile log: long ad messages now wrap to about 9 lines in a 40 px scroller, so the flavour line is never visible without scrolling the log | medium | intent_gap | Resolved by the user (option c, tap or focus to expand). The frozen intent is amended; it's applied in layout.css and tokens.css. |
+
+Final browser check (v4, 2026-10-05):
+- Tap-to-expand, the collapsed one-line clamps and desktop all pass.
+- The collapsed flavour line was cut off by 2 px, so `--log-height-mobile` went from 5rem to 5.4rem. This is the smallest change that fits two clamped lines in the slim log. The frozen intent's 5rem was the user's "let's try" value.

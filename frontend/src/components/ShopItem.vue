@@ -19,7 +19,7 @@ const effectText = computed(() => {
 
 <template>
     <article class="item">
-        <h3>{{ props.item.name }}</h3>
+        <h2>{{ props.item.name }}</h2>
         <p>{{ copy.shop.cost }}: {{ props.item.cost }}</p>
         <p v-if="effectText">{{ effectText }}</p>
         <p v-if="afford.state === 'no'" :id="shortfallId" class="note">
@@ -47,7 +47,7 @@ const effectText = computed(() => {
     background: var(--color-surface);
 }
 
-h3 {
+h2 {
     margin: 0;
     font-size: var(--font-size-m);
 }
