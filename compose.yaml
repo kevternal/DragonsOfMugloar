@@ -1,0 +1,8 @@
+services:
+  npc:
+    build: ./backend
+    # The status panel needs a terminal, and Enter (pause/resume) needs stdin.
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./backend/games-history:/app/games-history
