@@ -95,7 +95,9 @@ flowchart LR
   | `adRiskTier(ad)` | tier | `riskTier` of the label; `unknown` for unsolvable ads. |
   | `rankJobs(input)` | `RankedJob[]` | `{ ad, tier, winPct, value, flag: 'trap' \| 'state-risk' \| null, best: boolean }` in display order. `value` is `null` for traps and unknown odds. Never filters. |
   | `recommendItem(input)` | `{ itemId: string; reason: 'low-lives' \| 'level-up' } \| null` | Tree v3.4 steps 3–6. |
-  | `itemAdvice(item)` | `'plus2' \| 'plus1-not-worth' \| 'potion' \| null` | From `itemEffect`. |
+  | `itemAdvice(itemId)` | `'plus2' \| 'plus1-not-worth' \| 'potion' \| null` | From `itemEffect`. |
+  | `shopHint(lives, recommendation)` | `'low-lives' \| 'level-up' \| null` | The Shop tab hint; "Low on lives" at 1 life even when the potion is unaffordable. |
+  | `raisedStat(deltas)` | `'level' \| 'lives' \| null` | Which stat a buy raised, for buy feedback. |
   | `shelfOrder(items)` | `ShopItem[]` | Cost ascending, then API response order. The shop view and `recommendItem` tie-breaks both use it. |
 
   **Recommendations.** `game/recommendations.ts` ports decision tree v3.4 (`backend/.../npc/game/Strategy.java`) as pure functions, with every rule as specified in `recommendations.md`:
@@ -143,7 +145,7 @@ flowchart LR
 
   **`useHighScoresStore`** owns the list of finished-game scores. Each entry is `{ gameId: string; score: number; turn: number; endedAt: string; expired: boolean }`, with `endedAt` in ISO 8601. The list is only appended to, and is sorted best-first when read.
 
-  The game store also exposes two computed values, `rankedJobs` (`rankJobs`) and `recommendedItem` (`recommendItem`), built from its own state via `game/` (AD-4). Views read these; they never call the recommendation functions themselves.
+  The game store also exposes computed values `rankedJobs` (`rankJobs`), `recommendedItem` (`recommendItem`) and `shopHint`, plus `lastBuy`: the latest buy `TurnRecord`, set in `recordTurn` and cleared when the next action starts or the game resets, built from its own state via `game/` (AD-4). Views read these; they never call the recommendation functions themselves.
 
   The game store's game-over step calls `useHighScoresStore().append()`. That is the only store-to-store call. The API's `highScore` field is ignored: it was 0 in every probe game [V 2026-10-01].
 

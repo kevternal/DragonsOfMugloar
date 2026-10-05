@@ -5,10 +5,11 @@ import { ApiError } from '@/api/client'
 import type { AdDto, ItemDto, StartDto } from '@/api/types'
 import { applyTurn } from '@/game/apply-turn'
 import { decodeAd } from '@/game/decode'
-import { rankJobs, stateDelta } from '@/game/recommendations'
+import { rankJobs, recommendItem, shopHint as hintFor, stateDelta } from '@/game/recommendations'
 import { affordability } from '@/game/shop'
 import type {
     Ad,
+    BuyRecord,
     GameError,
     GameStatus,
     Reputation,
@@ -61,6 +62,11 @@ export const useGameStore = defineStore('game', () => {
     // AD-6: sum of stateDelta over this game's successful solves, replaced by each reputation
     // reading. Never persisted; 0 while unknown, as the tree treats it.
     const stateEstimate = ref(0)
+    // AD-6: successful buys per item id this game, for the +2 rotation. Never persisted.
+    const purchases = ref<Record<string, number>>({})
+    // AD-6: the latest buy's log entry, for the buy feedback (CAP-4). Set with the entry,
+    // cleared when the next action starts or the game resets.
+    const lastBuy = ref<BuyRecord | null>(null)
 
     // AD-6, AD-4: the jobs board in display order, with flags and the best pick.
     const rankedJobs = computed(() =>
@@ -71,6 +77,28 @@ export const useGameStore = defineStore('game', () => {
             stateEstimate: stateEstimate.value,
         }),
     )
+
+    // AD-6, AD-4: the shop's recommended item, if any.
+    const recommendedItem = computed(() =>
+        recommendItem({
+            lives: stats.value.lives,
+            gold: stats.value.gold,
+            board: board.value,
+            shop: shop.value,
+            purchases: purchases.value,
+            stateEstimate: stateEstimate.value,
+        }),
+    )
+
+    // AD-6, AD-4: the Shop tab's one hint.
+    // CAP-17 matrix "Unknown stats": no tab hint while lives or gold is unknown.
+    const shopHint = computed(() => {
+        if (stats.value.gold === null) {
+            return null
+        }
+
+        return hintFor(stats.value.lives, recommendedItem.value)
+    })
 
     // Guards start/load, which have no gameId to compare before their first response.
     let epoch = 0
@@ -118,8 +146,17 @@ export const useGameStore = defineStore('game', () => {
         log.value = []
         seq = 0
         stateEstimate.value = 0
+        purchases.value = {}
+        lastBuy.value = null
         pending.value = false
         error.value = null
+    }
+
+    /** An action starts: one at a time, and the previous result and error are cleared. */
+    function beginAction(): void {
+        pending.value = true
+        error.value = null
+        lastBuy.value = null
     }
 
     function beginLoading(): void {
@@ -150,10 +187,11 @@ export const useGameStore = defineStore('game', () => {
         { incrementTurn = false, stateChange = 0 }: TurnEffects,
     ): void {
         const { stats: next, deltas } = applyTurn(before, response as TurnResponse, incrementTurn)
+        seq += 1
+        const record: TurnRecord = { seq, turn: next.turn, ...info, deltas }
 
         stats.value = next
-        seq += 1
-        log.value.push({ seq, turn: next.turn, ...info, deltas })
+        log.value.push(record)
 
         // The top bar shows the new values together with the log entry, not after the refetch.
         // A reading replaces the state estimate; any other turn adds its change.
@@ -162,6 +200,13 @@ export const useGameStore = defineStore('game', () => {
             stateEstimate.value = info.reputation.state
         } else {
             stateEstimate.value += stateChange
+        }
+
+        if (record.kind === 'buy') {
+            lastBuy.value = record
+            if (record.success) {
+                purchases.value[record.itemId] = (purchases.value[record.itemId] ?? 0) + 1
+            }
         }
 
         if (next.lives === 0) {
@@ -333,8 +378,7 @@ export const useGameStore = defineStore('game', () => {
         }
 
         const id = gameId.value
-        pending.value = true
-        error.value = null
+        beginAction()
         const before = { ...stats.value }
 
         try {
@@ -394,7 +438,12 @@ export const useGameStore = defineStore('game', () => {
 
         await runTurn(
             () => api.buyItem(id, item.id),
-            (r) => ({ kind: 'buy', itemName: item.name, success: r.shoppingSuccess }),
+            (r) => ({
+                kind: 'buy',
+                itemId: item.id,
+                itemName: item.name,
+                success: r.shoppingSuccess,
+            }),
         )
     }
 
@@ -422,8 +471,7 @@ export const useGameStore = defineStore('game', () => {
             return
         }
 
-        pending.value = true
-        error.value = null
+        beginAction()
 
         try {
             const items = await api.getShop(id)
@@ -458,8 +506,7 @@ export const useGameStore = defineStore('game', () => {
             return
         }
 
-        pending.value = true
-        error.value = null
+        beginAction()
 
         try {
             await refreshBoard(id)
@@ -485,7 +532,11 @@ export const useGameStore = defineStore('game', () => {
         expiredNotice,
         // Read-only outside the store: only turns change it (AD-7).
         stateEstimate: readonly(stateEstimate),
+        purchases: readonly(purchases),
+        lastBuy: readonly(lastBuy),
         rankedJobs,
+        recommendedItem,
+        shopHint,
         start,
         load,
         solve,

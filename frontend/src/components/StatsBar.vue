@@ -4,7 +4,11 @@ import GameIcon, { type IconName } from './GameIcon.vue'
 import StatValue from './StatValue.vue'
 import type { StatKey, Stats } from '@/game/types'
 
-defineProps<{ stats: Stats }>()
+const { stats, changed = null } = defineProps<{
+    stats: Stats
+    /** The stat a buy just raised (CAP-4); its result is also in the bought row's status. */
+    changed?: StatKey | null
+}>()
 
 const keys: StatKey[] = ['lives', 'gold', 'level', 'score', 'turn']
 
@@ -21,7 +25,7 @@ const icons: Record<StatKey, IconName> = {
 <template>
     <section class="stats" :aria-label="copy.stats.heading">
         <dl>
-            <div v-for="key in keys" :key="key" class="stat">
+            <div v-for="key in keys" :key="key" class="stat" :class="{ changed: key === changed }">
                 <dt>{{ copy.stats[key] }}</dt>
                 <dd>
                     <GameIcon :name="icons[key]" class="icon" /><StatValue :value="stats[key]" />
@@ -36,7 +40,7 @@ const icons: Record<StatKey, IconName> = {
 dl {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-1) var(--space-3);
+    gap: var(--space-1) var(--space-2);
     padding: var(--space-1) var(--space-2);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
@@ -45,6 +49,9 @@ dl {
 
 .stat {
     display: flex;
+    /* Room for the emphasis, so emphasising a stat never shifts the bar. */
+    padding: 0 var(--space-1);
+    border-radius: var(--radius);
     gap: var(--space-1);
     align-items: baseline;
 }
@@ -65,5 +72,28 @@ dd {
 
 .icon {
     color: var(--color-accent);
+}
+
+/* Outlined as well as tinted, so it shows in forced colors too (an outline, not a
+   transparent border, which forced colors would draw on every stat). */
+.stat.changed {
+    outline: 1px solid var(--color-stat-changed);
+    background: var(--color-stat-changed-bg);
+}
+
+.stat.changed dd {
+    color: var(--color-stat-changed);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .stat.changed dd {
+        animation: stat-pop 0.5s ease-out;
+    }
+
+    @keyframes stat-pop {
+        40% {
+            transform: scale(1.25);
+        }
+    }
 }
 </style>

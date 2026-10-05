@@ -1,30 +1,52 @@
 <script lang="ts">
 // game-icons.net art (CC BY 3.0; Lorc, Delapouite, Sbed; credited in copy.credits). The black
 // background square is stripped from each file; the shape is used as a mask over currentColor.
+import breastplate from '@/assets/icons/breastplate.svg'
 import cakeSlice from '@/assets/icons/cake-slice.svg'
+import clawSlashes from '@/assets/icons/claw-slashes.svg'
+import crossedClaws from '@/assets/icons/crossed-claws.svg'
 import crown from '@/assets/icons/crown.svg'
 import deathSkull from '@/assets/icons/death-skull.svg'
+import fairyWings from '@/assets/icons/fairy-wings.svg'
 import footprint from '@/assets/icons/footprint.svg'
+import healthPotion from '@/assets/icons/health-potion.svg'
 import heartDrop from '@/assets/icons/heart-drop.svg'
 import hood from '@/assets/icons/hood.svg'
 import hourglass from '@/assets/icons/hourglass.svg'
+import jerrycan from '@/assets/icons/jerrycan.svg'
 import levelFour from '@/assets/icons/level-four.svg'
+import metalPlate from '@/assets/icons/metal-plate.svg'
 import person from '@/assets/icons/person.svg'
+import rocket from '@/assets/icons/rocket.svg'
 import rollingDices from '@/assets/icons/rolling-dices.svg'
+import secretBook from '@/assets/icons/secret-book.svg'
+import spellBook from '@/assets/icons/spell-book.svg'
+import standingPotion from '@/assets/icons/standing-potion.svg'
 import trophy from '@/assets/icons/trophy.svg'
 import twoCoins from '@/assets/icons/two-coins.svg'
 
 const ICONS = {
+    breastplate,
     'cake-slice': cakeSlice,
+    'claw-slashes': clawSlashes,
+    'crossed-claws': crossedClaws,
     crown,
     'death-skull': deathSkull,
+    'fairy-wings': fairyWings,
     footprint,
+    'health-potion': healthPotion,
     'heart-drop': heartDrop,
     hood,
     hourglass,
+    jerrycan,
     'level-four': levelFour,
+    'metal-plate': metalPlate,
     person,
+    rocket,
     'rolling-dices': rollingDices,
+    'secret-book': secretBook,
+    'spell-book': spellBook,
+    'standing-potion': standingPotion,
     trophy,
     'two-coins': twoCoins,
 } as const

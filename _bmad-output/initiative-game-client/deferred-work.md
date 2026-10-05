@@ -16,3 +16,6 @@
 - source_plan: `_bmad-output/initiative-game-client/plan-iteration-a-game-screen-layout.md`
   summary: Pre-existing a11y gaps. index.html has lang="" and the title "Vite App" with no per-route titles; the loading role=status is inserted together with its content.
   evidence: a11y lens; SC 3.1.1, 2.4.2, 4.1.3.
+- source_plan: none
+  summary: Job row cue polish, to apply after B2 lands. Row order is gold, risk icon, label and win %, ad text, expiry. Gold icon tiers are crown-coin (under 100), coins (100–999) and open-treasure-chest by Skoll (1,000 and up), in a gold colour distinct from moderate amber; credits add Skoll. Expiry is coloured only: red at 1 turn, amber at 2–3.
+  evidence: User decision 2026-10-05 from the gold-cues preview (variant B). Held back so it doesn't edit the same files as B2.

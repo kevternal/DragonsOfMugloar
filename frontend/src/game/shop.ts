@@ -1,3 +1,4 @@
+import type { Deltas } from './types'
 import { warnUnlisted } from './warn'
 
 export interface ItemEffect {
@@ -33,8 +34,24 @@ export function affordability(
     gold: number | null,
     cost: number,
 ): { state: 'yes' | 'no' | 'unknown'; shortfall: number | null } {
-    if (gold === null) return { state: 'unknown', shortfall: null }
+    if (gold === null) {
+        return { state: 'unknown', shortfall: null }
+    }
     return gold >= cost
         ? { state: 'yes', shortfall: null }
         : { state: 'no', shortfall: cost - gold }
+}
+
+/**
+ * AD-4: which stat a buy raised, from its deltas: level, else lives; `null` when neither rose
+ * (a delta of 0, or unknown stats). Shared by the bought row and the stat emphasis (CAP-4).
+ */
+export function raisedStat(deltas: Deltas): 'level' | 'lives' | null {
+    if ((deltas.level ?? 0) > 0) {
+        return 'level'
+    }
+    if ((deltas.lives ?? 0) > 0) {
+        return 'lives'
+    }
+    return null
 }

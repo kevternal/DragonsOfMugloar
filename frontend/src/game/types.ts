@@ -35,7 +35,7 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K>
 /** What happened on one turn, without the log bookkeeping (AD-7). */
 type TurnOutcome =
     | { kind: 'solve'; adMessage: string; success: boolean; message: string; deltas: Deltas }
-    | { kind: 'buy'; itemName: string; success: boolean; deltas: Deltas }
+    | { kind: 'buy'; itemId: string; itemName: string; success: boolean; deltas: Deltas }
     | { kind: 'reputation'; reputation: Reputation; deltas: Deltas }
 
 /**
@@ -43,6 +43,9 @@ type TurnOutcome =
  * `turn` is the turn after the action, `null` when unknown (AD-11).
  */
 export type TurnRecord = { seq: number; turn: number | null } & TurnOutcome
+
+/** A buy's log entry: the buy feedback reads it (CAP-4). */
+export type BuyRecord = Extract<TurnRecord, { kind: 'buy' }>
 
 /** The display part of a turn that an action describes; the store adds deltas and bookkeeping. */
 export type TurnInfo = DistributiveOmit<TurnOutcome, 'deltas'>
@@ -75,3 +78,18 @@ export interface RankedJob {
     flag: JobFlag | null
     best: boolean
 }
+
+/**
+ * The recommended shop item (AD-4, `recommendItem`): the healing potion at 1 life, or the
+ * least-bought +2 item under steps 2–4 (recommendations.md, "Shop (CAP-17)").
+ */
+export interface ItemRecommendation {
+    itemId: string
+    reason: 'low-lives' | 'level-up'
+}
+
+/** What the shop says about an item regardless of the board (CAP-17): +1 items are not worth it. */
+export type ItemAdvice = 'plus2' | 'plus1-not-worth' | 'potion'
+
+/** The one hint the Shop tab shows (CAP-17); `null` for none. */
+export type ShopHint = ItemRecommendation['reason'] | null

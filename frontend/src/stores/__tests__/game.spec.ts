@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { LIVE_SHOP, liveItem } from '@/__tests__/stub-api'
 import { BOARD_RETRY_DELAYS_MS, useGameStore } from '../game'
 
 type Handler = () => Response | Promise<Response>
@@ -656,6 +657,230 @@ describe('game store', () => {
             await game.load('g1') // no save: stats unknown
             expect(game.stats.gold).toBeNull()
             expect(game.rankedJobs.find((j) => j.best)?.ad.adId).toBe('top')
+        })
+    })
+
+    describe('purchases, recommendedItem and the buy result (AD-6, AD-7, CAP-4, CAP-17)', () => {
+        const shopItems = ['hpot', 'cs', 'ch', 'rf'].map(liveItem)
+        const deadlyAds = [{ ...ads[0], adId: 'd1', probability: 'Playing with fire' }]
+        // From the start's 3 lives and level 0 with 900 gold: a buy changes gold and level only.
+        const bought = () => json({ shoppingSuccess: true, gold: 600, lives: 3, level: 2, turn: 1 })
+        // A failed buy keeps gold, lives and level; it still costs a turn [V].
+        const failedBuy = () =>
+            json({ shoppingSuccess: false, gold: 900, lives: 3, level: 0, turn: 1 })
+        const shopBase = {
+            ...base,
+            'GET /g1/shop': () => json(shopItems),
+            'GET /g1/messages': () => json(deadlyAds),
+        }
+
+        it('a successful buy counts the item with its log entry, before the board refetch', async () => {
+            let release: () => void = () => undefined
+            let messageCalls = 0
+            stubApi({
+                ...shopBase,
+                'GET /g1/messages': () =>
+                    messageCalls++ === 1
+                        ? new Promise<Response>(
+                              (resolve) => (release = () => resolve(json(deadlyAds))),
+                          )
+                        : json(deadlyAds),
+                'POST /g1/shop/buy/ch': () => bought(),
+            })
+            const game = useGameStore()
+            await game.start()
+            game.stats.gold = 900
+            expect(game.purchases).toEqual({})
+
+            const turn = game.buy('ch')
+            await vi.waitFor(() => expect(game.log).toHaveLength(1))
+            expect(game.pending).toBe(true)
+            expect(game.purchases).toEqual({ ch: 1 })
+            release()
+            await turn
+            await game.buy('ch')
+            expect(game.purchases).toEqual({ ch: 2 })
+        })
+
+        it('a failed buy or a failed API call counts nothing', async () => {
+            let attempts = 0
+            stubApi({
+                ...shopBase,
+                'POST /g1/shop/buy/ch': () =>
+                    attempts++ === 0 ? new Response('x', { status: 500 }) : failedBuy(),
+            })
+            const game = useGameStore()
+            await game.start()
+            game.stats.gold = 900
+            await game.buy('ch')
+            await game.buy('ch')
+            expect(game.log).toHaveLength(1)
+            expect(game.purchases).toEqual({})
+        })
+
+        it('recommendedItem rotates the +2 items by purchases and follows lives and gold', async () => {
+            stubApi({
+                ...shopBase,
+                'POST /g1/shop/buy/ch': () => bought(),
+            })
+            const game = useGameStore()
+            await game.start()
+            expect(game.recommendedItem).toBeNull() // 3 lives, 0 gold
+            game.stats.gold = 900
+            expect(game.recommendedItem).toEqual({ itemId: 'ch', reason: 'level-up' })
+            await game.buy('ch') // gold 600
+            expect(game.recommendedItem).toEqual({ itemId: 'rf', reason: 'level-up' })
+            game.stats.lives = 1
+            expect(game.recommendedItem).toEqual({ itemId: 'hpot', reason: 'low-lives' })
+            game.stats.gold = null
+            expect(game.recommendedItem).toBeNull()
+        })
+
+        it('purchases is read-only outside the store', async () => {
+            stubApi(shopBase)
+            const game = useGameStore()
+            await game.start()
+            // Vue's read-only warning goes to the console.warn spy set up in beforeEach.
+            ;(game.purchases as Record<string, number>).ch = 5
+            expect(game.purchases).toEqual({})
+        })
+
+        it('start() and load() of another id empty purchases', async () => {
+            let starts = 0
+            const forGame = (id: string) => ({
+                [`GET /${id}/shop`]: () => json(shopItems),
+                [`GET /${id}/messages`]: () => json(deadlyAds),
+                [`POST /${id}/shop/buy/ch`]: () => bought(),
+            })
+            stubApi({
+                ...forGame('g1'),
+                ...forGame('g2'),
+                ...forGame('g3'),
+                'POST /game/start': () =>
+                    json({ ...startBody, gameId: starts++ === 0 ? 'g1' : 'g2' }),
+            })
+            const game = useGameStore()
+            await game.start()
+            game.stats.gold = 900
+            await game.buy('ch')
+            expect(game.purchases).toEqual({ ch: 1 })
+
+            await game.start()
+            expect(game.purchases).toEqual({})
+            game.stats.gold = 900
+            await game.buy('ch')
+            expect(game.purchases).toEqual({ ch: 1 })
+
+            await game.load('g3')
+            expect(game.purchases).toEqual({})
+        })
+
+        it('lastBuy holds the buy until the next action starts, even if that one fails', async () => {
+            let releaseSolve: (r: Response) => void = () => undefined
+            let solves = 0
+            stubApi({
+                ...shopBase,
+                'POST /g1/shop/buy/ch': () => bought(),
+                'POST /g1/solve/d1': () =>
+                    solves++ === 0
+                        ? new Promise<Response>((resolve) => (releaseSolve = resolve))
+                        : json({
+                              success: true,
+                              lives: 2,
+                              gold: 650,
+                              score: 5,
+                              turn: 3,
+                              message: 'ok',
+                          }),
+            })
+            const game = useGameStore()
+            await game.start()
+            expect(game.lastBuy).toBeNull()
+            game.stats.gold = 900
+            await game.buy('ch')
+            expect(game.lastBuy).toMatchObject({
+                kind: 'buy',
+                itemId: 'ch',
+                itemName: 'Claw Honing',
+                success: true,
+                deltas: { level: 2, gold: -300 },
+            })
+
+            const turn = game.solve('d1')
+            expect(game.lastBuy).toBeNull() // the next action has started
+            releaseSolve(new Response('x', { status: 500 }))
+            await turn
+            expect(game.error).not.toBeNull()
+            expect(game.lastBuy).toBeNull()
+
+            await game.solve('d1')
+            expect(game.lastBuy).toBeNull()
+        })
+
+        it('lastBuy holds a failed buy too', async () => {
+            stubApi({
+                ...shopBase,
+                'POST /g1/shop/buy/ch': failedBuy,
+            })
+            const game = useGameStore()
+            await game.start()
+            game.stats.gold = 900
+            await game.buy('ch')
+            expect(game.lastBuy).toMatchObject({ kind: 'buy', itemId: 'ch', success: false })
+            expect(game.stats).toMatchObject({ gold: 900, lives: 3, level: 0 })
+        })
+
+        it('lastBuy is cleared by the shop and board retries, which start an action too', async () => {
+            stubApi({
+                ...shopBase,
+                'POST /g1/shop/buy/ch': () => bought(),
+            })
+            const game = useGameStore()
+            await game.start()
+            game.stats.gold = 900
+            await game.buy('ch')
+            expect(game.lastBuy).not.toBeNull()
+            await game.refreshShop()
+            expect(game.lastBuy).toBeNull()
+
+            await game.buy('ch')
+            expect(game.lastBuy).not.toBeNull()
+            await game.refreshMessages()
+            expect(game.lastBuy).toBeNull()
+        })
+
+        it('shopHint: Low on lives at 1 life even when broke, else the recommendation', async () => {
+            stubApi(shopBase)
+            const game = useGameStore()
+            await game.start()
+            expect(game.shopHint).toBeNull() // 3 lives, 0 gold
+            game.stats.gold = 900
+            expect(game.shopHint).toBe('level-up')
+            Object.assign(game.stats, { lives: 1, gold: 10 })
+            expect(game.shopHint).toBe('low-lives')
+            game.stats.lives = null
+            expect(game.shopHint).toBeNull()
+        })
+
+        it('recommendedItem feeds the state estimate to the guard: a safe steal at −7 is left out', async () => {
+            const board = [
+                { ...ads[0], adId: 's1', message: 'Steal a goat', probability: 'Sure thing' },
+                { ...ads[0], adId: 'm1', probability: 'Walk in the park' },
+            ]
+            stubApi({
+                ...shopBase,
+                'GET /g1/shop': () => json([...LIVE_SHOP]),
+                'GET /g1/messages': () => json(board),
+                'POST /g1/investigate/reputation': () =>
+                    json({ people: 0, state: -7, underworld: 0 }),
+            })
+            const game = useGameStore()
+            await game.start()
+            Object.assign(game.stats, { lives: 2, gold: 350 })
+            expect(game.recommendedItem).toBeNull() // the steal is playable and safe
+            await game.investigateReputation()
+            expect(game.stateEstimate).toBe(-7)
+            expect(game.recommendedItem).toEqual({ itemId: 'ch', reason: 'level-up' })
         })
     })
 })

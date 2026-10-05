@@ -1,13 +1,24 @@
 // Every player-facing string lives here, in tavern voice. Buttons state the plain action.
-import type { GameError, Reputation, RiskTier, StatKey } from '@/game/types'
+import type { GameError, ItemRecommendation, Reputation, RiskTier, StatKey } from '@/game/types'
 
 const livesWord = (n: number) => (n === 1 ? 'life' : 'lives')
+
+/** The step 1 reason, on the Shop tab and on the potion's badge (CAP-17). */
+const LOW_ON_LIVES = 'Low on lives'
 
 /** Signed number with a true minus sign, e.g. "−2". */
 const signed = (n: number) => (n < 0 ? `−${-n}` : String(n))
 
 export const copy = {
     title: 'Dragons of Mugloar',
+    /** Visually hidden, between the spoken parts of a control's name (job and shop rows, Shop tab). */
+    separator: ', ',
+    /** Units after a signed change (`formatDelta`). */
+    units: {
+        gold: () => 'gold',
+        lives: livesWord,
+        level: (n: number) => (n === 1 ? 'level' : 'levels'),
+    } satisfies Record<'gold' | 'lives' | 'level', (n: number) => string>,
     start: {
         heading: 'Dragons of Mugloar',
         intro: 'Pull up a stool. The board is full of work, and your dragon is hungry.',
@@ -19,6 +30,11 @@ export const copy = {
         label: 'Game sections',
         ads: 'Message board',
         shop: 'Shop',
+        /** The Shop link's one hint (CAP-17), after a visually hidden separator. */
+        hint: {
+            'low-lives': LOW_ON_LIVES,
+            'level-up': 'Level up',
+        } satisfies Record<ItemRecommendation['reason'], string>,
     },
     stats: {
         heading: 'Your dragon',
@@ -57,7 +73,6 @@ export const copy = {
             deadly: 'deadly, ',
             unknown: 'unknown risk, ',
         } satisfies Record<RiskTier, string>,
-        separator: ', ',
         endOdds: '. ',
         endMessage: '. ',
         gold: ' gold',
@@ -73,11 +88,30 @@ export const copy = {
         empty: 'The shelves are empty. Nothing is for sale right now.',
         failed: 'The shopkeeper is out back and could not show his wares. Have a look again in a moment.',
         retry: 'Check the shop again',
-        cost: 'Cost',
+        flavour: 'Wares for your dragon, cheapest on the top shelf. Pay at the counter.',
+        /** The recommended item's badge, by the recommendation's reason. */
+        badge: {
+            'low-lives': LOW_ON_LIVES,
+            'level-up': 'Buy next',
+        } satisfies Record<ItemRecommendation['reason'], string>,
+        /** The badge on every +1 item. */
+        notWorth: 'Not worth it',
+        /** Visible owned count, e.g. "Owned ×2"; spoken as "owned 2". */
+        owned: (n: number) => `Owned ×${n}`,
+        ownedSpoken: (n: number) => `owned ${n}`,
+        /*
+         * Visually hidden parts of a row's name, e.g.
+         * "Rocket Fuel, +2 levels, 300 gold, Buy next, buy (costs one turn)".
+         */
+        gold: ' gold',
+        /** The visible cue that the row buys; the name ends with `buySpoken` instead. */
         buy: 'Buy',
-        effectLevel: (n: number) => `Raises your dragon's level by ${n}`,
-        effectLife: (n: number) => `Restores ${n} ${livesWord(n)}`,
+        buySpoken: 'buy (costs one turn)',
         shortfall: (n: number) => `You need ${n} more gold.`,
+        /** The bought row's status after a failed buy (a failed buy still costs a turn [V]). */
+        buyFailed: 'The shopkeeper fumbled the sale. Nothing was bought.',
+        /** The bought row's status when the buy raised no stat. */
+        boughtNoChange: 'Bought, though your dragon looks much the same.',
     },
     reputation: {
         label: 'Reputation',
@@ -100,10 +134,6 @@ export const copy = {
         bought: (item: string) => `Bought ${item}`,
         asked: (rep: Reputation) =>
             `Asked around: people ${signed(rep.people)}, state ${signed(rep.state)}, underworld ${signed(rep.underworld)}`,
-        units: { gold: () => 'gold', lives: livesWord } satisfies Record<
-            'gold' | 'lives',
-            (n: number) => string
-        >,
     },
     over: {
         heading: 'Game over',
@@ -123,15 +153,22 @@ export const copy = {
 }
 
 export function errorMessage(error: GameError): string {
-    if (error.kind === 'network') return copy.errors.network
-    if (error.kind === 'not-found') return copy.errors.notFound
+    if (error.kind === 'network') {
+        return copy.errors.network
+    }
+    if (error.kind === 'not-found') {
+        return copy.errors.notFound
+    }
     return copy.errors.http
 }
 
-/** CAP-12: the log shows only non-zero gold and lives changes, e.g. "+82 gold", "−1 life". */
-export function formatDelta(key: 'gold' | 'lives', value: number): string {
+/**
+ * A signed change with its unit, e.g. "+82 gold", "−1 life", "+2 levels". The log shows gold
+ * and lives, plus level for buys (CAP-12); the shop shows item effects and buy results (CAP-4).
+ */
+export function formatDelta(key: keyof typeof copy.units, value: number): string {
     const size = Math.abs(value)
-    return `${value > 0 ? '+' : '−'}${size} ${copy.log.units[key](size)}`
+    return `${value > 0 ? '+' : '−'}${size} ${copy.units[key](size)}`
 }
 
 /** CAP-5: the three values; `null` means unknown until first investigated. */

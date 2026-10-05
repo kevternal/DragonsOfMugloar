@@ -1,9 +1,18 @@
-// CAP-16: the job half of decision tree v3.4, ported from backend `npc/game/Strategy.java` and
-// `AdKind.java` as pure functions (AD-4). Rules and evidence: recommendations.md, "Ad kinds" and
-// "Jobs"; findings in shared-mugloar-game/strategy-findings.md.
+// CAP-16 and CAP-17: decision tree v3.4, ported from backend `npc/game/Strategy.java` and
+// `AdKind.java` as pure functions (AD-4). Rules and evidence: recommendations.md, "Ad kinds",
+// "Jobs" and "Shop"; findings in shared-mugloar-game/strategy-findings.md.
 import { labelOdds } from './risk'
 import { itemEffect } from './shop'
-import type { Ad, JobFlag, RankedJob, RiskTier, ShopItem } from './types'
+import type {
+    Ad,
+    ItemAdvice,
+    ItemRecommendation,
+    JobFlag,
+    RankedJob,
+    RiskTier,
+    ShopHint,
+    ShopItem,
+} from './types'
 
 export type AdKind = 'bait' | 'steal' | 'infiltrate' | 'investigate' | 'other'
 
@@ -32,6 +41,39 @@ const STATE_FLOOR = -8
  * (strategy-findings.md, "Loss penalty and +1 items").
  */
 const LOSS_BASE = 75
+
+/*
+ * Shop step numbers are the spec's (recommendations.md, "Shop (CAP-17)"): steps 1–4 there are
+ * `Strategy.decide` steps 3–6 in the backend.
+ */
+
+/** Step 1: heal only at 1 life (strategy-findings.md, "The decision tree"). */
+const LOW_LIVES = 1
+
+/** Step 2 applies at exactly this many lives. */
+const TWO_LIVES = 2
+
+/** Steps 3 and 4 apply from this many lives: a +2 item only with a life to spare. */
+const MIN_LIVES_LEVEL_UP = 2
+
+/** Step 2: at 2 lives with no safe ad, a +2 item from this much gold (never a +1). */
+const GOLD_TWO_LIVES_PLUS2 = 350
+
+/** Step 3: a +2 item from this much gold while some playable ad is not safe. */
+const GOLD_PROACTIVE_PLUS2 = 400
+
+/**
+ * Step 4: on an all-deadly board, a +2 item from 350 gold keeps 50 for a potion [V, n=1]
+ * (strategy-findings.md, "Tree v3.1: best run").
+ */
+const GOLD_DEADLY_PLUS2 = 350
+
+/**
+ * Only +2 items are worth buying: +1 items ease about 3% of ads against about 25% for +2, and
+ * every losing probe game bought 7–22 of them [V, 11 games] (strategy-findings.md, "Loss
+ * penalty and +1 items").
+ */
+const LEVELS_WORTH_BUYING = 2
 
 /** Safest first, unknown last (the backend's `Risk.Tier` order). */
 const TIER_ORDER: readonly RiskTier[] = ['safe', 'moderate', 'risky', 'deadly', 'unknown']
@@ -66,6 +108,11 @@ export function stateDelta(message: string): -2 | 2 | 1 | 0 {
     const prefixes = Object.keys(STATE_DELTA) as (keyof typeof STATE_DELTA)[]
     const prefix = prefixes.find((p) => message.startsWith(p))
     return prefix === undefined ? 0 : STATE_DELTA[prefix]
+}
+
+/** What its message and label say about each ad on the board. */
+function toJobs(board: Ad[]): Job[] {
+    return board.map((ad) => ({ ad, kind: adKind(ad), ...labelOdds(ad) }))
 }
 
 /** `winPct × reward − (100 − winPct) × lossCost`, integer maths. */
@@ -211,7 +258,7 @@ function sortGroup(rows: Row[], group: Group): Row[] {
  * a win rate of 0. The best pick is the first playable ad in that order.
  */
 export function rankJobs({ gold, board, shop, stateEstimate }: JobsInput): RankedJob[] {
-    const jobs: Job[] = board.map((ad) => ({ ad, kind: adKind(ad), ...labelOdds(ad) }))
+    const jobs = toJobs(board)
     const playable = playableJobs(jobs, stateEstimate)
     const playableAds = new Set(playable.map((j) => j.ad))
     // A loss costs the base plus a turn, valued at the best safe playable reward.
@@ -245,4 +292,131 @@ export function rankJobs({ gold, board, shop, stateEstimate }: JobsInput): Ranke
         flag,
         best: ad === bestAd,
     }))
+}
+
+// ---- Shop (CAP-17) ----------------------------------------------------------
+
+/** AD-4: the shelves, cheapest first; equal costs keep the API order (the sort is stable). */
+export function shelfOrder(items: readonly ShopItem[]): ShopItem[] {
+    return [...items].sort((a, b) => a.cost - b.cost)
+}
+
+/** AD-4: potion, +2 item or +1 item (not worth buying), from the item's effect; `null` if unlisted. */
+export function itemAdvice(itemId: string): ItemAdvice | null {
+    const effect = itemEffect(itemId)
+    if ((effect?.lives ?? 0) > 0) {
+        return 'potion'
+    }
+    if (effect?.level === LEVELS_WORTH_BUYING) {
+        return 'plus2'
+    }
+    if (effect?.level === 1) {
+        return 'plus1-not-worth'
+    }
+    return null
+}
+
+export interface ShopInput {
+    /** `null` while unknown: then nothing is recommended (AD-4). */
+    lives: number | null
+    gold: number | null
+    board: Ad[]
+    shop: ShopItem[]
+    /** Successful buys per item id this game. */
+    purchases: Readonly<Record<string, number>>
+    /** The state reputation estimate; treated as 0 while unknown, as the tree does. */
+    stateEstimate: number
+}
+
+/**
+ * `Strategy.levelItem`: among the affordable +2 items, the one bought least this game. Ties go
+ * to the first in shelf order, as the spec says; the backend uses API order. The two are the
+ * same in the live shop, where every +2 item costs 300 [V] (observed-values.md, "Shop items").
+ */
+function leastBoughtPlus2(
+    shop: ShopItem[],
+    purchases: Readonly<Record<string, number>>,
+    gold: number,
+): ShopItem | null {
+    const bought = (item: ShopItem) => purchases[item.id] ?? 0
+    let pick: ShopItem | null = null
+    for (const item of shelfOrder(shop)) {
+        const worthIt = itemAdvice(item.id) === 'plus2' && item.cost <= gold
+        if (worthIt && (pick === null || bought(item) < bought(pick))) {
+            pick = item
+        }
+    }
+    return pick
+}
+
+/**
+ * CAP-17: the recommended item, by the spec's steps 1–4 (`Strategy.decide` steps 3–6); the
+ * first match wins.
+ *
+ * 1. At 1 life with the potion affordable: the potion.
+ * 2. At 2 lives with no safe playable ad and 350+ gold: the least-bought +2 item.
+ * 3. At 2+ lives with some playable ad not safe and 400+ gold: the same.
+ * 4. At 2+ lives on an all-deadly board with 350+ gold: the same.
+ *
+ * Steps 2–4 need at least one playable ad: a purchase can't help an empty board.
+ */
+export function recommendItem({
+    lives,
+    gold,
+    board,
+    shop,
+    purchases,
+    stateEstimate,
+}: ShopInput): ItemRecommendation | null {
+    if (lives === null || gold === null) {
+        return null
+    }
+
+    // Step 1, before the playable-ad check: the potion helps even on an empty board.
+    const potion = cheapestPotion(shop)
+    if (lives === LOW_LIVES && potion !== null && potion.cost <= gold) {
+        return { itemId: potion.id, reason: 'low-lives' }
+    }
+
+    const playable = playableJobs(toJobs(board), stateEstimate)
+    if (playable.length === 0) {
+        return null
+    }
+
+    const isSafe = (job: Job) => job.tier === 'safe'
+    const isDeadly = (job: Job) => job.tier === 'deadly'
+    const anySafe = playable.some(isSafe)
+    // Unknown odds count as not safe, as in the backend.
+    const anyNotSafe = !playable.every(isSafe)
+    const allDeadly = playable.every(isDeadly)
+    const spareLife = lives >= MIN_LIVES_LEVEL_UP
+    const levelUpSteps = [
+        { applies: lives === TWO_LIVES && !anySafe, minGold: GOLD_TWO_LIVES_PLUS2 },
+        { applies: spareLife && anyNotSafe, minGold: GOLD_PROACTIVE_PLUS2 },
+        { applies: spareLife && allDeadly, minGold: GOLD_DEADLY_PLUS2 },
+    ]
+    if (!levelUpSteps.some((step) => step.applies && gold >= step.minGold)) {
+        return null
+    }
+
+    const item = leastBoughtPlus2(shop, purchases, gold)
+    return item === null ? null : { itemId: item.id, reason: 'level-up' }
+}
+
+/**
+ * CAP-17: the Shop tab's one hint. "Low on lives" at 1 life, even when the potion is
+ * unaffordable; otherwise the recommendation's reason (none while gold is unknown). Unknown
+ * lives mean no hint.
+ */
+export function shopHint(
+    lives: number | null,
+    recommendation: ItemRecommendation | null,
+): ShopHint {
+    if (lives === null) {
+        return null
+    }
+    if (lives === LOW_LIVES) {
+        return 'low-lives'
+    }
+    return recommendation?.reason ?? null
 }

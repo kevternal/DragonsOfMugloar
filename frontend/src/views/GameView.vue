@@ -5,6 +5,7 @@ import ActivityLog from '@/components/ActivityLog.vue'
 import ReputationPanel from '@/components/ReputationPanel.vue'
 import StatsBar from '@/components/StatsBar.vue'
 import { copy, errorMessage } from '@/copy'
+import { raisedStat } from '@/game/shop'
 import { useGameStore } from '@/stores/game'
 
 const game = useGameStore()
@@ -13,6 +14,9 @@ const router = useRouter()
 
 const gameId = computed(() => String(route.params.gameId))
 const isOver = computed(() => route.name === 'over')
+
+// CAP-4: the stat the latest buy raised, emphasised until the next action starts.
+const changed = computed(() => (game.lastBuy?.success ? raisedStat(game.lastBuy.deltas) : null))
 
 // AD-10: load once per game id. Panel switches never reload. A fresh /over URL is
 // handled by GameOverView (it redirects), so it spends no requests.
@@ -119,19 +123,25 @@ onBeforeUnmount(() => {
 <template>
     <main class="game">
         <header v-if="!isOver" ref="topBar" class="game-top">
-            <StatsBar :stats="game.stats" />
+            <StatsBar :stats="game.stats" :changed="changed" />
             <ReputationPanel
                 :reputation="game.reputation"
                 :disabled="game.pending || game.status !== 'playing'"
                 @investigate="game.investigateReputation()"
             />
             <nav class="game-nav" :aria-label="copy.nav.label">
-                <RouterLink :to="{ name: 'ads', params: { gameId } }">{{
-                    copy.nav.ads
-                }}</RouterLink>
-                <RouterLink :to="{ name: 'shop', params: { gameId } }">{{
-                    copy.nav.shop
-                }}</RouterLink>
+                <RouterLink :to="{ name: 'ads', params: { gameId } }">
+                    <span>{{ copy.nav.ads }}</span>
+                </RouterLink>
+                <!-- CAP-17: the Shop link's one hint, in text. Each part on its own line, so
+                     no stray spaces reach the name ("Shop, Level up"). -->
+                <RouterLink :to="{ name: 'shop', params: { gameId } }">
+                    <span>{{ copy.nav.shop }}</span>
+                    <template v-if="game.shopHint">
+                        <span class="visually-hidden">{{ copy.separator }}</span>
+                        <span class="nav-hint">{{ copy.nav.hint[game.shopHint] }}</span>
+                    </template>
+                </RouterLink>
             </nav>
             <p v-if="game.status === 'loading'" role="status">{{ copy.loading }}</p>
             <p v-if="game.error" role="alert" class="error">{{ errorMessage(game.error) }}</p>
@@ -147,6 +157,18 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.nav-hint {
+    margin-inline-start: var(--space-1);
+    padding: 0 var(--space-1);
+    /* Keeps the hint outlined in forced colors, where backgrounds are dropped. */
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    background: var(--color-badge-best-bg);
+    color: var(--color-badge-best-text);
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+}
+
 .error {
     padding: var(--space-1) var(--space-3);
     border-radius: var(--radius);

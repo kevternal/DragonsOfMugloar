@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { mount } from '@vue/test-utils'
+import { liveItem } from '@/__tests__/stub-api'
 import type { RankedJob, TurnRecord } from '@/game/types'
 import ActivityLog from '../ActivityLog.vue'
 import BoardNotice from '../BoardNotice.vue'
@@ -158,7 +159,11 @@ describe('GameIcon', () => {
         // Vitest runs from the frontend root (vitest.config.ts `root`).
         const dir = join(process.cwd(), 'src/assets/icons')
         const files = readdirSync(dir).filter((f) => f.endsWith('.svg'))
-        expect(files).toHaveLength(12)
+        // Every registered icon has a file, and every file is registered.
+        const source = readFileSync(join(process.cwd(), 'src/components/GameIcon.vue'), 'utf8')
+        const registered = [...source.matchAll(/@\/assets\/icons\/([\w-]+\.svg)/g)].map((m) => m[1])
+        expect(registered.length).toBeGreaterThan(0)
+        expect([...registered].sort()).toEqual([...files].sort())
         const sources = files.map((file) => readFileSync(join(dir, file), 'utf8'))
         expect(files.filter((_, i) => sources[i]!.includes('M0 0h512v512H0z'))).toEqual([])
         expect(files.filter((_, i) => !sources[i]!.includes('fill="#fff"'))).toEqual([])
@@ -166,22 +171,144 @@ describe('GameIcon', () => {
 })
 
 describe('ShopItem', () => {
-    const item = { id: 'cs', name: 'Claw Sharpening', cost: 100 }
+    const item = liveItem('cs')
+    const rocket = liveItem('rf')
+    const potion = liveItem('hpot')
+    const BUY = ', buy (costs one turn)'
+    type Props = InstanceType<typeof ShopItem>['$props']
+    const mountItem = (props: Partial<Props> & Pick<Props, 'item'>) =>
+        mount(ShopItem, { props: { gold: 1000, disabled: false, ...props } })
+    const name = (wrapper: ReturnType<typeof mount>) => spoken(rowButton(wrapper).element)
+    const status = (wrapper: ReturnType<typeof mount>) => wrapper.get('.status').text()
 
-    it('disables buy and states the shortfall when gold is known and too low', () => {
-        const wrapper = mount(ShopItem, { props: { item, gold: 40, disabled: false } })
-        expect(wrapper.get('button').attributes('disabled')).toBeDefined()
-        expect(wrapper.text()).toContain('You need 60 more gold.')
-        expect(wrapper.text()).toContain('level by 1')
+    it('is one button named by its content: item name first, then effect, cost, badge, owned', () => {
+        const wrapper = mountItem({ item: rocket, reason: 'level-up', owned: 2 })
+        expect(name(wrapper)).toBe(`Rocket Fuel, +2 levels, 300 gold, Buy next, owned 2${BUY}`)
+        expect(rowButton(wrapper).attributes('aria-label')).toBeUndefined()
+        expect(visible(rowButton(wrapper).element)).toBe(
+            'Rocket Fuel+2 levels300BuyBuy nextOwned ×2',
+        )
     })
 
-    it('enables buy when gold is enough or unknown', async () => {
+    it('shows its item icon (decorative) and a coin before the cost', () => {
+        const wrapper = mountItem({ item: rocket })
+        const icons = wrapper.findAllComponents(GameIcon).map((icon) => icon.props('name'))
+        expect(icons).toEqual(['rocket', 'two-coins'])
+    })
+
+    it.each([
+        ['hpot', 'health-potion'],
+        ['cs', 'claw-slashes'],
+        ['gas', 'jerrycan'],
+        ['wax', 'metal-plate'],
+        ['tricks', 'secret-book'],
+        ['wingpot', 'standing-potion'],
+        ['ch', 'crossed-claws'],
+        ['rf', 'rocket'],
+        ['iron', 'breastplate'],
+        ['mtrix', 'spell-book'],
+        ['wingpotmax', 'fairy-wings'],
+    ])('item %s uses the approved icon %s', (id, icon) => {
+        const wrapper = mountItem({ item: liveItem(id) })
+        expect(wrapper.findAllComponents(GameIcon)[0]?.props('name')).toBe(icon)
+    })
+
+    it.each([
+        { reason: 'low-lives', item: potion, badge: 'Low on lives' },
+        { reason: 'level-up', item: rocket, badge: 'Buy next' },
+        { reason: null, item, badge: 'Not worth it' },
+    ] as const)('reason $reason on $item.id gives the badge $badge', ({ reason, item, badge }) => {
+        const wrapper = mountItem({ item, reason })
+        expect(wrapper.findAll('.badge').map((b) => b.text())).toEqual([badge])
+        expect(name(wrapper)).toContain(` gold, ${badge}${BUY}`)
+    })
+
+    it('has no badge for an unrecommended +2 item or potion, and hides an owned count of 0', () => {
+        for (const [unrecommended, expected] of [
+            [rocket, `Rocket Fuel, +2 levels, 300 gold${BUY}`],
+            [potion, `Healing potion, +1 life, 50 gold${BUY}`],
+        ] as const) {
+            const wrapper = mountItem({ item: unrecommended, owned: 0 })
+            expect(wrapper.find('.badge').exists()).toBe(false)
+            expect(wrapper.text()).not.toContain('Owned')
+            expect(name(wrapper)).toBe(expected)
+        }
+    })
+
+    it('says "+1 life" for the potion and "+1 level" for a +1 item', () => {
+        expect(name(mountItem({ item: potion }))).toBe(`Healing potion, +1 life, 50 gold${BUY}`)
+        expect(name(mountItem({ item }))).toBe(
+            `Claw Sharpening, +1 level, 100 gold, Not worth it${BUY}`,
+        )
+    })
+
+    it('disables buy and links the shortfall when gold is known and too low', () => {
+        const wrapper = mountItem({ item, gold: 40 })
+        const button = rowButton(wrapper)
+        expect(button.attributes('disabled')).toBeDefined()
+        const note = wrapper.get(`#${button.attributes('aria-describedby')}`)
+        expect(note.text()).toBe('You need 60 more gold.')
+    })
+
+    it('enables buy when gold is enough or unknown, with no shortfall', async () => {
         for (const gold of [100, null]) {
-            const wrapper = mount(ShopItem, { props: { item, gold, disabled: false } })
-            expect(wrapper.get('button').attributes('disabled')).toBeUndefined()
-            await wrapper.get('button').trigger('click')
+            const wrapper = mountItem({ item, gold })
+            const button = rowButton(wrapper)
+            expect(button.attributes('disabled')).toBeUndefined()
+            expect(button.attributes('aria-describedby')).toBeUndefined()
+            expect(wrapper.text()).not.toContain('more gold')
+            await button.trigger('click')
             expect(wrapper.emitted('buy')).toEqual([['cs']])
         }
+    })
+
+    it('disables when asked', () => {
+        expect(rowButton(mountItem({ item, disabled: true })).attributes('disabled')).toBeDefined()
+    })
+
+    it('has no live region: the activity log announces the buy (AD-15)', () => {
+        const wrapper = mountItem({
+            item: rocket,
+            result: { success: true, deltas: { level: 2, gold: -300 } },
+        })
+        expect(wrapper.find('[role="status"], [aria-live]').exists()).toBe(false)
+        expect(status(wrapper)).toBe('+2 levels')
+    })
+
+    it('a successful buy states the stat it raised, from the deltas', async () => {
+        const wrapper = mountItem({
+            item: rocket,
+            result: { success: true, deltas: { level: 3, gold: -300 } },
+        })
+        expect(status(wrapper)).toBe('+3 levels')
+        await wrapper.setProps({
+            item: potion,
+            result: { success: true, deltas: { lives: 1, gold: -50 } },
+        })
+        expect(status(wrapper)).toBe('+1 life')
+    })
+
+    it('with unknown stats (no delta), a successful buy states the item effect', () => {
+        const wrapper = mountItem({ item: rocket, result: { success: true, deltas: {} } })
+        expect(status(wrapper)).toBe('+2 levels')
+    })
+
+    it('a level delta of 0 never shows the item effect', () => {
+        const wrapper = mountItem({
+            item: rocket,
+            result: { success: true, deltas: { level: 0, gold: -300 } },
+        })
+        expect(status(wrapper)).toBe('Bought, though your dragon looks much the same.')
+    })
+
+    it('a failed buy says so in tavern voice', () => {
+        const wrapper = mountItem({ item: rocket, result: { success: false, deltas: {} } })
+        expect(status(wrapper)).toBe('The shopkeeper fumbled the sale. Nothing was bought.')
+        expect(wrapper.get('.status').classes()).toContain('failed')
+    })
+
+    it('shows no status without a result', () => {
+        expect(status(mountItem({ item: rocket }))).toBe('')
     })
 })
 
@@ -208,6 +335,15 @@ describe('StatsBar', () => {
         for (const dd of wrapper.findAll('dd')) {
             expect(dd.element.firstElementChild?.getAttribute('aria-hidden')).toBe('true')
         }
+    })
+
+    it('emphasises only the stat a buy changed', async () => {
+        const stats = { lives: 3, gold: 9, level: 2, score: 2, turn: 4 }
+        const wrapper = mount(StatsBar, { props: { stats, changed: 'level' } })
+        const changed = () => wrapper.findAll('.changed').map((el) => el.get('dt').text())
+        expect(changed()).toEqual(['Level'])
+        await wrapper.setProps({ changed: null })
+        expect(changed()).toEqual([])
     })
 })
 
@@ -308,6 +444,7 @@ describe('ActivityLog', () => {
             seq: 1,
             turn: 3,
             kind: 'buy',
+            itemId: 'hpot',
             itemName: 'Healing potion',
             success: true,
             deltas: { gold: -50, lives: 1, turn: 1 },
@@ -318,6 +455,22 @@ describe('ActivityLog', () => {
             'Turn 3, succeeded: Bought Healing potion, −50 gold, +1 life',
         )
         expect(entry?.findAll('p')).toHaveLength(1)
+    })
+
+    it('a buy also speaks its level change, first', () => {
+        const buy: TurnRecord = {
+            seq: 1,
+            turn: 3,
+            kind: 'buy',
+            itemId: 'rf',
+            itemName: 'Rocket Fuel',
+            success: true,
+            deltas: { level: 2, gold: -300, turn: 1 },
+        }
+        const wrapper = mount(ActivityLog, { props: { log: [buy] } })
+        expect(spoken(entries(wrapper)[0]!.element)).toBe(
+            'Turn 3, succeeded: Bought Rocket Fuel, +2 levels, −300 gold',
+        )
     })
 
     it('a reputation entry lists the new values and has no success mark', () => {

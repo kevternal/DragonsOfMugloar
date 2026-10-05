@@ -34,6 +34,12 @@
     --color-badge-state-bg: var(--color-notice-bg);
     --color-badge-state-text: var(--color-risk-moderate);
 
+    /* Shop (CAP-4): the shelf plank between cost groups (decorative), and the stat a buy just
+       changed (CAP-17), always also stated in the bought row's status text. */
+    --color-shelf: #8b5a2b;
+    --color-stat-changed-bg: var(--color-notice-bg);
+    --color-stat-changed: var(--color-success);
+
     /* Self-hosted via @fontsource-variable (OFL), imported in main.ts; never a Google Fonts link. */
     --font-display: 'Fredoka Variable', 'Fredoka', ui-rounded, system-ui, sans-serif;
     --font-body: 'Nunito Variable', 'Nunito', system-ui, sans-serif;

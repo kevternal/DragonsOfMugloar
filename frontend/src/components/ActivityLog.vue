@@ -5,6 +5,9 @@ import type { TurnRecord } from '@/game/types'
 
 const props = defineProps<{ log: TurnRecord[] }>()
 
+const LOG_KEYS = ['gold', 'lives'] as const
+const LOG_KEYS_BUY = ['level', 'gold', 'lives'] as const
+
 const labelId = useId()
 const region = useTemplateRef<HTMLElement>('region')
 
@@ -19,9 +22,13 @@ function actionText(entry: TurnRecord): string {
     }
 }
 
-/** CAP-12: only gold and lives changes are shown; zero changes are left out. */
+/**
+ * CAP-12: gold and lives changes, plus the level change of a buy (whose row status is not
+ * announced, so the log speaks it); zero changes are left out.
+ */
 function deltaText(entry: TurnRecord): string {
-    return (['gold', 'lives'] as const)
+    const keys = entry.kind === 'buy' ? LOG_KEYS_BUY : LOG_KEYS
+    return keys
         .flatMap((key) => {
             const value = entry.deltas[key] ?? 0
             return value === 0 ? [] : [formatDelta(key, value)]

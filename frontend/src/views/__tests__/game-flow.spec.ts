@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { ads, html404, items, json, startBody, stubApi } from '@/__tests__/stub-api'
+import { ads, html404, items, json, liveItem, startBody, stubApi } from '@/__tests__/stub-api'
 import App from '@/App.vue'
 import { routes } from '@/router'
 import { copy } from '@/copy'
@@ -224,6 +224,89 @@ describe('game flow', () => {
             const { wrapper } = await mountAt('/game/g1/ads') // fresh pinia = reload
             expect(logEntries(wrapper)).toHaveLength(0)
             expect(wrapper.text()).toContain('Nothing has happened yet.')
+        })
+
+        describe('shop tab hint and buy feedback (CAP-4, CAP-17)', () => {
+            const shopItems = ['hpot', 'cs', 'rf'].map(liveItem)
+            const moderateAd = { ...ads[0], adId: 'm1', probability: 'Walk in the park' }
+            const shopLink = (w: Wrapper) =>
+                w
+                    .get('nav[aria-label="Game sections"]')
+                    .findAll('a')
+                    .find((a) => a.text().startsWith('Shop'))!
+
+            it.each([
+                { lives: 1, gold: 60, board: ads, name: 'Shop, Low on lives' },
+                { lives: 1, gold: 10, board: ads, name: 'Shop, Low on lives' },
+                { lives: 2, gold: 350, board: [moderateAd], name: 'Shop, Level up' },
+                { lives: 3, gold: 400, board: [moderateAd], name: 'Shop, Level up' },
+                { lives: 3, gold: 400, board: ads, name: 'Shop' },
+                { lives: 1, gold: null, board: ads, name: 'Shop' },
+                { lives: null, gold: 400, board: [moderateAd], name: 'Shop' },
+            ])(
+                'at $lives lives and $gold gold the Shop link reads $name',
+                async ({ lives, gold, board, name }) => {
+                    stubApi({
+                        'GET /g1/messages': () => json(board),
+                        'GET /g1/shop': () => json(shopItems),
+                    })
+                    const pinia = createPinia()
+                    const { wrapper } = await mountAt('/game/g1/ads', pinia)
+                    setActivePinia(pinia)
+                    Object.assign(useGameStore().stats, { lives, gold })
+                    await flushPromises()
+                    expect(accessibleName(shopLink(wrapper))).toBe(name)
+                },
+            )
+
+            it('a buy shows its effect on the row, emphasises the stat and logs it, until the next action', async () => {
+                stubApi({
+                    'GET /g1/messages': () => json(ads),
+                    'GET /g1/shop': () => json(shopItems),
+                    'POST /g1/shop/buy/rf': () =>
+                        json({ shoppingSuccess: true, gold: 0, lives: 3, level: 2, turn: 1 }),
+                    'POST /g1/shop/buy/hpot': () =>
+                        json({ shoppingSuccess: true, gold: 0, lives: 4, level: 2, turn: 2 }),
+                    'POST /g1/solve/a1': solveOk,
+                })
+                const pinia = createPinia()
+                const { wrapper } = await mountAt('/game/g1/shop', pinia)
+                setActivePinia(pinia)
+                const game = useGameStore()
+                Object.assign(game.stats, { lives: 3, gold: 300, level: 0 })
+                await flushPromises()
+                const emphasised = () =>
+                    wrapper.findAll('.stats .changed dt').map((dt) => dt.text())
+                const filledStatuses = () =>
+                    wrapper
+                        .findAll('.shop-row .status')
+                        .map((el) => el.text())
+                        .filter(Boolean)
+                expect(emphasised()).toEqual([])
+
+                await button(wrapper, 'Rocket Fuel').trigger('click')
+                await flushPromises()
+                expect(filledStatuses()).toEqual(['+2 levels'])
+                expect(emphasised()).toEqual(['Level'])
+                expect(accessibleName(button(wrapper, 'Rocket Fuel'))).toMatch(
+                    /, owned 1, buy \(costs one turn\)$/,
+                )
+                expect(accessibleName(logEntries(wrapper)[logEntries(wrapper).length - 1]!)).toBe(
+                    'Turn 1, succeeded: Bought Rocket Fuel, +2 levels, −300 gold',
+                )
+
+                game.stats.gold = 50
+                await flushPromises()
+                await button(wrapper, 'Healing potion').trigger('click')
+                await flushPromises()
+                expect(filledStatuses()).toEqual(['+1 life'])
+                expect(emphasised()).toEqual(['Lives'])
+
+                await game.solve('a1')
+                await flushPromises()
+                expect(filledStatuses()).toEqual([])
+                expect(emphasised()).toEqual([])
+            })
         })
 
         it('the credits name each icon author, the site and the licence', async () => {
@@ -449,7 +532,7 @@ describe('game flow', () => {
                         new Promise<Response>((resolve) => (release = resolve)),
                 })
                 const { wrapper } = await mountAttached('/game/g1/shop')
-                const buy = button(wrapper, 'Buy')
+                const buy = button(wrapper, 'Healing potion')
                 // A browser may drop focus from a button once it is disabled; jsdom cannot
                 // blur a disabled element, so drop it just before the click instead.
                 ;(buy.element as HTMLElement).focus()

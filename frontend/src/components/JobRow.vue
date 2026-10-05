@@ -64,15 +64,15 @@ const badges = computed(() => {
                     >{{ copy.jobs.solve }}{{ copy.jobs.tier[job.tier] }}</span
                 >
                 <span class="label">{{ job.ad.probability }}</span>
-                <span class="visually-hidden">{{ copy.jobs.separator }}</span>
+                <span class="visually-hidden">{{ copy.separator }}</span>
                 <span class="pct">{{ oddsText }}</span>
-                <span class="visually-hidden">{{ copy.jobs.separator }}</span>
+                <span class="visually-hidden">{{ copy.separator }}</span>
                 <span class="reward">
                     <GameIcon name="two-coins" class="stat-icon" />{{ job.ad.reward
                     }}<span class="visually-hidden">{{ copy.jobs.gold }}</span>
                 </span>
                 <template v-for="badge in badges" :key="badge.kind">
-                    <span class="visually-hidden">{{ copy.jobs.separator }}</span>
+                    <span class="visually-hidden">{{ copy.separator }}</span>
                     <span class="badge" :class="badge.kind">{{ badge.text }}</span>
                 </template>
                 <span class="visually-hidden">{{ copy.jobs.endOdds }}</span>
