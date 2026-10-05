@@ -43,6 +43,12 @@
       "skillPath": "skills/bmad-spec/SKILL.md",
       "computedHash": "c411da78e56cd81bbdbdf6eef6e25ef6d02f4ee09571f18b745296f10588ba3b"
     },
+    "bmad-walkthrough": {
+      "source": "bmad-code-org/bmad-method",
+      "sourceType": "github",
+      "skillPath": "skills/bmad-walkthrough/SKILL.md",
+      "computedHash": "9c18ca1ff735431d1910c552a6eca363729f1049f658f788ffd4550ce63eb567"
+    },
     "bmod-core-tools": {
       "source": "bmad-code-org/BMAD-METHOD",
       "sourceType": "github",

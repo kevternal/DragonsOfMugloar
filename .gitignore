@@ -1,2 +1,9 @@
 node_modules
 .DS_Store
+
+# Claude Code (personal settings, agent worktrees)
+.claude/settings.local.json
+.claude/worktrees/
+
+# BMad (generated render cache)
+_bmad/render/
