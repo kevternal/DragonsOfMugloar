@@ -130,6 +130,14 @@ context:
 - **Unknown tier icon:** the approved set has no art for unknown, so it shows a "?" mark (decorative) next to the "unknown odds" text.
 - **Tier colours:** each is at least 5.2:1 against bg, surface and the notice background (passes as text too).
 - **Icons:** the 12 SVGs, fetched from game-icons/icons master on 2026-10-05, with `<path d="M0 0h512v512H0z"/>` removed. Vite inlines them as data URIs (under the 4 KB limit), so they add no requests.
+- **Polish after user test (2026-10-05):**
+  - **Rows:** the reward moved into the odds group, after the label and win %, before the badges; the expiry stays at the row end. Reward and expiry are 1.6rem, weight 700, in Fredoka. Wide rows have `--space-2`/`--space-3` padding. On narrow rows the expiry spans both lines, so it centres on the row. Measured in Chrome: the odds, reward, % and expiry centres coincide, with a 0px offset at 1440 and 360. The name now reads "Solve: safe, Piece of cake, 95%, 34 gold, Best pick. <ad>. 5 turns left".
+  - **Mobile log:** I could not reproduce the reported state in headless Chrome. I tried 360×640 with taps, clicks, failures, long flavour lines, a focused log, and reputation and buy turns. Each time the region was 44px, the newest entry 42px, and its flavour visible. The fragile part was the 2px margin between them: any scroll set before a later resize, or browser scroll anchoring, would leave the newest flavour out of view. Fixes:
+    - `.entries` sets `overflow-anchor: none`.
+    - A `ResizeObserver` on the region and its list re-pins the collapsed log to the newest entry.
+    - The flavour may wrap to 2 lines, with the action still clamped to 1. `--log-height-mobile` rose from 5.4rem to 7.4rem (three lines).
+    - While collapsed, the newest `li` has `min-height: 100cqh` (the region is a size container), so its line sits at the top even when it is shorter than the region. The desktop grid reverts this.
+  - **Credits:** unchanged. The user found that the Vue DevTools button was covering them.
 
 ## Plan Change Log
 

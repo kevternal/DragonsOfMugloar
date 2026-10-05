@@ -47,7 +47,7 @@ export const copy = {
         stateRisk: 'Angers the state',
         /*
          * Visually hidden parts of a row's accessible name, which the row's content forms, e.g.
-         * "Solve: safe, Piece of cake, 95%, Best pick. Escort the mayor. 80 gold, 4 turns left".
+         * "Solve: safe, Piece of cake, 95%, 34 gold, Best pick. Escort the mayor. 5 turns left".
          */
         solve: 'Solve: ',
         tier: {
@@ -60,7 +60,7 @@ export const copy = {
         separator: ', ',
         endOdds: '. ',
         endMessage: '. ',
-        gold: ' gold, ',
+        gold: ' gold',
         turnsLeft: (n: number) => (n === 1 ? ' turn left' : ' turns left'),
     },
     board: {

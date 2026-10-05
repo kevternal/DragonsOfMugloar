@@ -46,7 +46,7 @@ const badges = computed(() => {
 <template>
     <div class="job-row">
         <!-- CAP-16: one native button per job. Its content forms the name, decisive cues first:
-             "Solve: safe, Piece of cake, 95%, Best pick. <ad>. 80 gold, 4 turns left". -->
+             "Solve: safe, Piece of cake, 95%, 34 gold, Best pick. <ad>. 5 turns left". -->
         <button
             type="button"
             class="job"
@@ -66,6 +66,11 @@ const badges = computed(() => {
                 <span class="label">{{ job.ad.probability }}</span>
                 <span class="visually-hidden">{{ copy.jobs.separator }}</span>
                 <span class="pct">{{ oddsText }}</span>
+                <span class="visually-hidden">{{ copy.jobs.separator }}</span>
+                <span class="reward">
+                    <GameIcon name="two-coins" class="stat-icon" />{{ job.ad.reward
+                    }}<span class="visually-hidden">{{ copy.jobs.gold }}</span>
+                </span>
                 <template v-for="badge in badges" :key="badge.kind">
                     <span class="visually-hidden">{{ copy.jobs.separator }}</span>
                     <span class="badge" :class="badge.kind">{{ badge.text }}</span>
@@ -76,10 +81,6 @@ const badges = computed(() => {
                 >{{ job.ad.message
                 }}<span class="visually-hidden">{{ copy.jobs.endMessage }}</span></span
             >
-            <span class="reward">
-                <GameIcon name="two-coins" class="stat-icon" />{{ job.ad.reward
-                }}<span class="visually-hidden">{{ copy.jobs.gold }}</span>
-            </span>
             <span class="expiry">
                 <GameIcon name="hourglass" class="stat-icon" />{{ job.ad.expiresIn
                 }}<span class="visually-hidden">{{ copy.jobs.turnsLeft(job.ad.expiresIn) }}</span>
@@ -94,13 +95,14 @@ const badges = computed(() => {
     container: job-row / inline-size;
 }
 
-/* Narrow: icon | odds and badges | reward, over icon | message (two lines) | expiry. */
+/* Narrow: icon | odds, reward and badges | expiry, over icon | message (two lines) | expiry.
+   The expiry spans both lines, so it centres on the row like the icon. */
 .job {
     /* Contains the visually hidden name parts. */
     position: relative;
     display: grid;
     grid-template-areas:
-        'risk odds reward'
+        'risk odds expiry'
         'risk message expiry';
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 0 var(--space-2);
@@ -234,24 +236,22 @@ const badges = computed(() => {
     color: var(--color-badge-state-text);
 }
 
+/* Row stats: larger and bolder than the label, in the display font. */
 .reward,
 .expiry {
     display: flex;
     gap: var(--space-1);
     align-items: center;
-    justify-content: flex-end;
     font-family: var(--font-display);
+    font-size: var(--font-size-m);
+    font-weight: 700;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
 
-.reward {
-    grid-area: reward;
-    font-weight: 700;
-}
-
 .expiry {
     grid-area: expiry;
+    justify-content: flex-end;
 }
 
 .stat-icon {
@@ -268,8 +268,9 @@ const badges = computed(() => {
    64rem at the 10px root = 640px [V, Chrome, 2026-10-05]. */
 @container job-row (min-width: 64rem) {
     .job {
-        grid-template-areas: 'risk odds message reward expiry';
-        grid-template-columns: auto minmax(0, 22rem) minmax(0, 1fr) 7rem 5rem;
+        grid-template-areas: 'risk odds message expiry';
+        grid-template-columns: auto minmax(0, 30rem) minmax(0, 1fr) 5rem;
+        padding: var(--space-2) var(--space-3);
     }
 }
 </style>

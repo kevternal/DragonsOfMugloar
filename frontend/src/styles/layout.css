@@ -73,14 +73,31 @@
     height: var(--log-height-expanded);
 }
 
-/* While collapsed, the newest entry's action and flavour each keep to one line so both
-   fit the slim log; expanding (or the desktop grid) shows the full text. */
+/* While collapsed, the newest entry's action keeps to one line and its flavour to two, so
+   both fit the slim log (three lines tall); expanding (or the desktop grid) shows the full
+   text. */
 .activity-log:not(:focus-within) :is(.action, .flavour) {
     display: -webkit-box;
     overflow: hidden;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 1;
     line-clamp: 1;
+}
+
+.activity-log:not(:focus-within) .flavour {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+}
+
+/* The newest entry is at least as tall as the slim region, so the scroll can always put its
+   line at the top, even when it is shorter than the region (otherwise the maximum scroll
+   would stop early and show the previous entry above it). */
+.activity-log:not(:focus-within) .entries {
+    container-type: size;
+}
+
+.activity-log:not(:focus-within) li:last-child {
+    min-height: 100cqh;
 }
 
 .game-nav {
@@ -165,6 +182,14 @@
         overflow: visible;
         -webkit-line-clamp: unset;
         line-clamp: unset;
+    }
+
+    .activity-log:not(:focus-within) .entries {
+        container-type: normal;
+    }
+
+    .activity-log:not(:focus-within) li:last-child {
+        min-height: 0;
     }
 
     .game-bottom > .credits {

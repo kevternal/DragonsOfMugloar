@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { mount } from '@vue/test-utils'
@@ -49,12 +49,12 @@ function rowButton(wrapper: ReturnType<typeof mount>) {
 }
 
 describe('JobRow', () => {
-    it('is one button whose content names the odds first, then the job, gold and turns', async () => {
+    it('is one button whose content names the odds and gold first, then the job and turns', async () => {
         const wrapper = mount(JobRow, { props: { job: job(), disabled: false } })
         const button = rowButton(wrapper)
         expect(button.attributes('aria-label')).toBeUndefined()
         expect(spoken(button.element)).toBe(
-            'Solve: risky, Risky, 41%. Job one. 10 gold, 2 turns left',
+            'Solve: risky, Risky, 41%, 10 gold. Job one. 2 turns left',
         )
         await button.trigger('click')
         expect(wrapper.emitted('solve')).toEqual([['a1']])
@@ -63,7 +63,7 @@ describe('JobRow', () => {
     it('shows the label, win %, reward and expiry as visible text', () => {
         const wrapper = mount(JobRow, { props: { job: job(), disabled: false } })
         const button = rowButton(wrapper)
-        expect(oddsParts(button.element)).toEqual(['Risky', '41%'])
+        expect(oddsParts(button.element)).toEqual(['Risky', '41%', '10'])
         expect(visible(button.get('.reward').element)).toBe('10')
         expect(visible(button.get('.expiry').element)).toBe('2')
         expect(button.find('.reward [aria-hidden="true"]').exists()).toBe(true)
@@ -84,23 +84,27 @@ describe('JobRow', () => {
 
     it('shows and names each badge with the odds', () => {
         const best = mount(JobRow, { props: { job: job({ best: true }), disabled: false } })
-        expect(spoken(rowButton(best).element)).toContain('41%, Best pick. Job one.')
-        expect(oddsParts(best.element)).toEqual(['Risky', '41%', 'Best pick'])
+        expect(spoken(rowButton(best).element)).toContain('41%, 10 gold, Best pick. Job one.')
+        expect(oddsParts(best.element)).toEqual(['Risky', '41%', '10', 'Best pick'])
 
         const trap = mount(JobRow, { props: { job: job({ flag: 'trap' }), disabled: false } })
-        expect(spoken(rowButton(trap).element)).toContain('41%, Trap. Job one.')
-        expect(oddsParts(trap.element)).toEqual(['Risky', '41%', 'Trap'])
+        expect(spoken(rowButton(trap).element)).toContain('41%, 10 gold, Trap. Job one.')
+        expect(oddsParts(trap.element)).toEqual(['Risky', '41%', '10', 'Trap'])
 
         const state = mount(JobRow, {
             props: { job: job({ flag: 'state-risk' }), disabled: false },
         })
-        expect(spoken(rowButton(state).element)).toContain('41%, Angers the state. Job one.')
-        expect(oddsParts(state.element)).toEqual(['Risky', '41%', 'Angers the state'])
+        expect(spoken(rowButton(state).element)).toContain(
+            '41%, 10 gold, Angers the state. Job one.',
+        )
+        expect(oddsParts(state.element)).toEqual(['Risky', '41%', '10', 'Angers the state'])
 
         const both = mount(JobRow, {
             props: { job: job({ best: true, flag: 'state-risk' }), disabled: false },
         })
-        expect(spoken(rowButton(both).element)).toContain('41%, Best pick, Angers the state.')
+        expect(spoken(rowButton(both).element)).toContain(
+            '41%, 10 gold, Best pick, Angers the state.',
+        )
     })
 
     it('says unknown odds and shows a "?" mark for an unknown label; one turn left', () => {
@@ -117,7 +121,7 @@ describe('JobRow', () => {
         })
         const button = rowButton(wrapper)
         expect(spoken(button.element)).toBe(
-            'Solve: unknown risk, Maybe?, unknown odds. Job one. 10 gold, 1 turn left',
+            'Solve: unknown risk, Maybe?, unknown odds, 10 gold. Job one. 1 turn left',
         )
         expect(visible(button.get('.risk').element)).toBe('?')
         expect(button.find('.risk .game-icon').exists()).toBe(false)
@@ -357,6 +361,27 @@ describe('ActivityLog', () => {
             const log = [solve(1, true, 'a'), solve(2, true, 'b'), solve(3, true, 'c')]
             const wrapper = mount(ActivityLog, { props: { log } })
             expect(region(wrapper).element.scrollTop).toBe(2 * rowHeight)
+        })
+
+        it('re-pins the collapsed log to the newest entry when it resizes', () => {
+            const callbacks: ResizeObserverCallback[] = []
+            vi.stubGlobal(
+                'ResizeObserver',
+                class {
+                    constructor(callback: ResizeObserverCallback) {
+                        callbacks.push(callback)
+                    }
+                    observe(): void {}
+                    unobserve(): void {}
+                    disconnect(): void {}
+                },
+            )
+            const log = [solve(1, true, 'a'), solve(2, true, 'b')]
+            const wrapper = mount(ActivityLog, { props: { log } })
+            const el = region(wrapper).element
+            el.scrollTop = 0 // e.g. a scroll set while the region was taller
+            callbacks.forEach((cb) => cb([], {} as ResizeObserver))
+            expect(el.scrollTop).toBe(rowHeight)
         })
 
         it('on a new entry, jumps to that entry instantly', async () => {

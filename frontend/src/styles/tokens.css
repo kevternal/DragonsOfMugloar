@@ -56,7 +56,8 @@
 
     /* Activity log height (AD-14): a grid row from 48rem up, a sticky strip below. */
     --log-height: 10rem;
-    --log-height-mobile: 5.4rem;
+    /* Three 2.1rem lines (action plus a two-line flavour), padding and border. */
+    --log-height-mobile: 7.4rem;
     --log-height-expanded: min(40dvh, 32rem);
 
     /* Focus ring (AD-15); its reach is width + offset, used for scroll padding (AD-14). */

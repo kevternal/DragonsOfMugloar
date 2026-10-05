@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, useId, useTemplateRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, useId, useTemplateRef, watch } from 'vue'
 import { copy, formatDelta } from '@/copy'
 import type { TurnRecord } from '@/game/types'
 
@@ -44,7 +44,25 @@ function showNewest(): void {
     }
 }
 
-onMounted(showNewest)
+// Re-pin the collapsed log to the newest entry whenever the region or its content resizes
+// (the log collapsing after a turn, a font swap), so a scroll set before the resize never
+// leaves the newest flavour line out of view. An expanded log is the reader's to scroll.
+const list = useTemplateRef<HTMLElement>('list')
+const observer = new ResizeObserver(() => {
+    if (!region.value?.matches(':focus-within')) {
+        showNewest()
+    }
+})
+
+onMounted(() => {
+    showNewest()
+    for (const el of [region.value, list.value]) {
+        if (el) {
+            observer.observe(el)
+        }
+    }
+})
+onBeforeUnmount(() => observer.disconnect())
 watch(() => props.log.length, showNewest, { flush: 'post' })
 </script>
 
@@ -63,7 +81,7 @@ watch(() => props.log.length, showNewest, { flush: 'post' })
             :aria-labelledby="labelId"
             tabindex="0"
         >
-            <ol>
+            <ol ref="list">
                 <li v-for="row in rows" :key="row.entry.seq">
                     <p class="line">
                         <span class="turn" aria-hidden="true">{{
@@ -119,6 +137,8 @@ watch(() => props.log.length, showNewest, { flush: 'post' })
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+    /* The scroll is set explicitly (showNewest); browser anchoring must not shift it. */
+    overflow-anchor: none;
 }
 
 ol {
