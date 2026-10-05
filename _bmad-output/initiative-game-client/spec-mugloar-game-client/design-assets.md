@@ -51,6 +51,7 @@ The user approved the preview at https://claude.ai/artifact/6sw4rvS41Em1TMQUhJyr
 | rf | lorc/rocket |
 | iron | lorc/breastplate |
 | mtrix | delapouite/spell-book |
+| wingpotmax | to choose in B2: an approved-author wings icon, e.g. delapouite/fairy-wings [U, not yet previewed] |
 
 ### Notes
 

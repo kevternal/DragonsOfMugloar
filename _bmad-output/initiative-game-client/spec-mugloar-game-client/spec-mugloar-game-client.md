@@ -5,7 +5,8 @@ companions:
   - ../../shared-mugloar-game/observed-values.md
   - game-flow.md
   - risk-cues.md
-  - strategies.md
+  - recommendations.md
+  - ../../shared-mugloar-game/strategy-findings.md
   - design-assets.md
   - ../architecture-mugloar-game-client/architecture-mugloar-game-client.md
 sources: []
@@ -74,11 +75,23 @@ A vision to realize: a playable browser UI for the Dragons of Mugloar game API (
   - **intent:** On desktop the player sees everything they need without scrolling the page; on mobile the essentials stay in reach.
   - **success:** At 1440 px, the stats, the reputation and the activity log are always visible, and only the jobs or shop view scrolls; the page itself never scrolls. At 360 px, the page scrolls, but the stats stay pinned at the top and the activity log stays pinned at the bottom.
 - **CAP-16**
-  - **intent:** The player picks a risk strategy that orders the jobs board for them.
-  - **success:** A "Risk level" switch offers Play it safe (the default) and For Glory!. It can be changed at any time and resets on each new game. The board is re-sorted according to `strategies.md`, and no job is ever hidden or disabled.
+  - **intent:** The player can see at a glance which jobs are worth taking.
+  - **success:** The board is a compact list of rows. Each row shows:
+    - a risk icon and colour;
+    - the label and its measured win rate;
+    - the ad text, clamped to two lines;
+    - the reward and the expiry.
+
+    Rows are sorted by the tree v3.4 value, and the best pick is highlighted. Bait is marked as a trap and sorted last. Steals are flagged when one more would push the state estimate below −8. No job is hidden or disabled. The rules are in `recommendations.md`.
 - **CAP-17**
-  - **intent:** The strategy nudges the player toward the shop when it matters.
-  - **success:** At the strategy's critical health, the shop entry point shows "Low health" and the healing potion is recommended. When every measured job is at or above the strategy's risk threshold and a level item is affordable, the shop entry point is highlighted and a level item is recommended with a non-promising tavern hint (`strategies.md`).
+  - **intent:** The shop points the player to what they are low on and what to buy next.
+  - **success:**
+    - At 1 life the potion is highlighted ("Low on lives").
+    - Otherwise the least-bought +2 item is recommended under the tree v3.4 conditions.
+    - +1 items are marked as not worth buying.
+    - The shop tab carries the matching hint.
+
+    The rules are in `recommendations.md`.
 
 ## Constraints
 
@@ -98,11 +111,11 @@ A vision to realize: a playable browser UI for the Dragons of Mugloar game API (
 
 ## Non-goals
 
-- A recommendation backend or advice beyond the fixed client-side rules in `strategies.md`. Smarter recommendations need a separate backend and integration, are optional, and go in a later spec.
+- A recommendation backend, an auto-play bot in the UI, or advice beyond the client-side tree v3.4 rules in `recommendations.md`. The backend NPC stays a separate tool.
 - Auto-play or a bot.
 - A victory screen or end state at 1000 points.
 - Accounts, server-side leaderboards, and syncing saved state between devices. A game link continues play on another device (CAP-14), but stats aren't carried over.
-- Restoring the activity log after a reload, and remembering the strategy between games.
+- Restoring the activity log, purchase counts, or state estimate after a reload.
 - Showing reputation automatically each turn (see Constraints).
 
 ## Success signal

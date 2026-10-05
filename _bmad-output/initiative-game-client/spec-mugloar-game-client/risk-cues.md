@@ -14,7 +14,7 @@ Every cue pairs a colour with an icon or shape so that meaning never relies on c
 | 4 | deadly | Playing with fire, Suicide mission, Impossible | 0–25% |
 | — | unknown | any label not in `observed-values.md` (neutral styling, CAP-9) | — |
 
-Each risk level's representative win rate, and how strategies use it, are in `strategies.md`.
+Rows also show each label's own measured win rate; the per-label table and the recommendation rules are in `recommendations.md`. The tier drives the icon and colour only.
 
 The labels' wording doesn't match how hard they are. "Hmmm...." plays like "Walk in the park", and "Playing with fire" plays like "Suicide mission". The tier, not the label text, drives the visual cue. Sure thing's place in "safe" carries an unresolved contradiction (see `observed-values.md`).
 

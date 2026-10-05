@@ -7,7 +7,7 @@ paradigm: 'Layered by type (create-vue convention) with a pure-logic layer'
 scope: 'Vue SPA in frontend/ that plays the Dragons of Mugloar API (spec-mugloar-game-client CAP-1..CAP-17)'
 status: final
 created: '2026-10-01'
-updated: '2026-10-02'
+updated: '2026-10-05'
 binds: [CAP-1, CAP-2, CAP-3, CAP-4, CAP-5, CAP-6, CAP-7, CAP-8, CAP-9, CAP-10, CAP-11, CAP-12, CAP-13, CAP-14, CAP-15, CAP-16, CAP-17]
 sources: []
 companions:
@@ -15,7 +15,7 @@ companions:
   - ../../shared-mugloar-game/api-contract.md
   - ../../shared-mugloar-game/observed-values.md
   - ../spec-mugloar-game-client/risk-cues.md
-  - ../spec-mugloar-game-client/strategies.md
+  - ../spec-mugloar-game-client/recommendations.md
 ---
 
 # Architecture Spine — Mugloar Game Client
@@ -77,8 +77,8 @@ flowchart LR
 ### AD-4 — `game/` owns every value mapping and cue derivation
 
 - **Binds:** CAP-4, CAP-6, CAP-9, CAP-16, CAP-17
-- **Prevents:** cut-offs, ranks, mappings, or strategy rules duplicated across components and drifting from the measured data.
-- **Rule:** `game/` holds the only implementations of these functions. Registries are copied from `observed-values.md`, `risk-cues.md`, and `strategies.md`.
+- **Prevents:** cut-offs, ranks, mappings, or recommendation rules duplicated across components and drifting from the measured data.
+- **Rule:** `game/` holds the only implementations of these functions. Registries are copied from `observed-values.md`, `risk-cues.md`, and `recommendations.md` (a port of backend tree v3.4).
 
   | Function | Returns | Notes |
   | --- | --- | --- |
@@ -89,22 +89,20 @@ flowchart LR
   | `affordability(gold, cost)` | `{ state: 'yes' \| 'no' \| 'unknown'; shortfall: number \| null }` | `'unknown'` when gold is `null`. |
   | `anyAffordable(gold, items)` | boolean | |
 
-  | `riskLevel(probability)` | `1 \| 2 \| 3 \| 4 \| null` | Derived from `riskTier` (safe → 1 … deadly → 4, unknown → `null`); no second label table. |
-  | `winRatePct(level)` | `100 \| 70 \| 40 \| 10` | Integer percent, so comparisons have no float ties. |
-  | `expectedReward(ad)` | `number \| null` | `reward × winRatePct`, an integer (percent-scaled); `null` when the risk is unknown. |
-  | `sortJobs(board, strategy)` | `Ad[]` (new array) | See *Sorting* below. Never filters. |
-  | `shopHint(input)` | `{ kind: 'critical-health' \| 'increase-level'; itemId: string \| null } \| null` | See *Hints* below. |
-  | `shelfOrder(items)` | `ShopItem[]` | Cost ascending, then API response order. The shop view and `shopHint` both use it. |
+  | `winPct(ad)` | `number \| null` | Integer percent per label (`recommendations.md`); `null` for unknown labels or unsolvable ads. |
+  | `adKind(ad)` | `'bait' \| 'steal' \| 'infiltrate' \| 'investigate' \| 'other'` | From the decoded message (`recommendations.md`). |
+  | `stateDelta(kind)` | `-2 \| 2 \| 1 \| 0` | Applied only on a successful solve. |
+  | `rankJobs(input)` | `RankedJob[]` | `{ ad, value, flag: 'trap' \| 'state-risk' \| null, best: boolean }` in display order. Never filters. |
+  | `recommendItem(input)` | `{ itemId: string; reason: 'low-lives' \| 'level-up' } \| null` | Tree v3.4 steps 3–6. |
+  | `itemAdvice(item)` | `'plus2' \| 'plus1-not-worth' \| 'potion' \| null` | From `itemEffect`. |
+  | `shelfOrder(items)` | `ShopItem[]` | Cost ascending, then API response order. The shop view and `recommendItem` tie-breaks both use it. |
 
-  **Sorting.** `sortJobs` splits the board into measured ads and unknown-risk ads. Measured ads are sorted by `strategy.sortBy` in order, then by `adId` as the final key. Unknown-risk ads always come after every measured ad (including deadly), sorted by `reward` descending, `expiresIn` ascending, then `adId`. The sort is stable and deterministic across refetches.
+  **Recommendations.** `game/recommendations.ts` ports decision tree v3.4 (`backend/.../npc/game/Strategy.java`) as pure functions, with every rule as specified in `recommendations.md`:
+  - playable ads, value, sort order and best pick (including the broke, safest-pick exception);
+  - trap and state-risk flags;
+  - the recommended item.
 
-  **Hints.** `shopHint({ strategy, status, boardStale, stats, board, shop })` evaluates in this order and returns the first match:
-  1. `null` unless `status === 'playing'`.
-  2. **Critical health:** `stats.lives` is known and `≤ strategy.criticalHealth`. Returns `critical-health` with the item whose `itemEffect` grants a life (the first in `shelfOrder`), or `itemId: null` if the shop has none. It applies whether or not the item is affordable; its buy control shows the shortfall (AD-8). It never falls through to the level hint.
-  3. **Increase level:** the board is fresh (`!boardStale`), has at least one measured ad, and every measured ad's `riskLevel ≥ strategy.increaseLevelAtRisk`. Candidates are level items whose `affordability` is `'yes'`. `optimizeShopFor: 'gold'` picks the cheapest; `'turns'` picks the most levels, then the cheapest. Ties go to the first in `shelfOrder`. No affordable candidate means `null`.
-  4. Otherwise `null`.
-
-  Strategies live in `game/strategies.ts`: one `Strategy` interface (`sortBy`, `criticalHealth`, `increaseLevelAtRisk`, `optimizeShopFor`) and one declarative object per strategy, keyed by `StrategyId = 'safe' | 'glory'`. Sort keys are named functions in a single registry. Components and views never branch on the strategy id; they read the store's derived values (AD-6).
+  Inputs are plain data: `{ stats, board, shop, purchases, stateEstimate }`. Integer maths only (`winPct × reward − (100 − winPct) × lossCost`), so there are no float ties. Thresholds are named constants that cite the findings. Unknown stats (`null` lives or gold) mean no item recommendation and no broke exception. Components never re-derive these.
 
   Board-relative results (`rewardRanks`) are computed once by the view and passed as props. A registry miss returns `unknown` or no effect, and calls `console.warn` naming the field and value, in dev builds only.
 
@@ -122,7 +120,7 @@ flowchart LR
 ### AD-6 — Store ownership [ADOPTED]
 
 - **Binds:** CAP-1–5, CAP-7, CAP-10–12, CAP-16, CAP-17
-- **Prevents:** two owners of the same game data, and the shop tab, shop view, and board disagreeing about the strategy's advice.
+- **Prevents:** two owners of the same game data, and the shop tab, shop view, and board disagreeing about the advice.
 - **Rule:** There are exactly two stores.
 
   **`useGameStore`** owns:
@@ -134,14 +132,17 @@ flowchart LR
   - `shop: ShopItem[]`
   - `reputation`: the latest value, or `null`
   - `log: TurnRecord[]` (AD-7)
-  - `strategyId: StrategyId`, default `'safe'`, reset by `start()` and `load()`
+  - `purchases: Record<string, number>`: successful buys per item id this game
+  - `stateEstimate: number`: the sum of `stateDelta` over successful solves, replaced by `state` on each reputation reading
+
+  `purchases` and `stateEstimate` are reset by `start()` and `load()` and are never persisted.
   - `pending`
   - `error`
   - `expiredNotice`: a one-shot flag, cleared by `start()`
 
   **`useHighScoresStore`** owns the list of finished-game scores. Each entry is `{ gameId: string; score: number; turn: number; endedAt: string; expired: boolean }`, with `endedAt` in ISO 8601. The list is only appended to, and is sorted best-first when read.
 
-  The game store also exposes two computed values, `sortedBoard` (`sortJobs`) and `hint` (`shopHint`), built from `strategyId` and its own state via `game/` (AD-4). Views read these; they never call `sortJobs` or `shopHint` themselves.
+  The game store also exposes two computed values, `rankedJobs` (`rankJobs`) and `recommendedItem` (`recommendItem`), built from its own state via `game/` (AD-4). Views read these; they never call the recommendation functions themselves.
 
   The game store's game-over step calls `useHighScoresStore().append()`. That is the only store-to-store call. The API's `highScore` field is ignored: it was 0 in every probe game [V 2026-10-01].
 
@@ -149,7 +150,7 @@ flowchart LR
 
 - **Binds:** CAP-1–5, CAP-7, CAP-12, CAP-16
 - **Prevents:** actions that order steps differently, erase known stats, record nothing, or apply a previous game's response.
-- **Rule:** State changes only inside these actions: `start()`, `load(gameId)`, `solve(adId)`, `buy(itemId)`, `investigateReputation()`, `refreshMessages()` (a player-triggered retry), `refreshShop()` (a player-triggered retry), and `setStrategy(id)`. `setStrategy` calls no API and is not blocked by `pending` (AD-8).
+- **Rule:** State changes only inside these actions: `start()`, `load(gameId)`, `solve(adId)`, `buy(itemId)`, `investigateReputation()`, `refreshMessages()` (a player-triggered retry), and `refreshShop()` (a player-triggered retry).
   - `start()` resets the full state first. Restart from game over calls `start()` directly; there is no separate restart action.
   - Every action captures `const id = gameId` before its first `await`, and after each `await` returns without touching state if the store's `gameId` changed. The same applies to `start` and `load`, via the requested id.
 
@@ -180,7 +181,7 @@ flowchart LR
   - `turn` is the turn after the action, `null` when unknown.
   - Reputation entries have no success mark.
   - Display text (`adMessage`, `itemName`) is captured from the ad or item before the API call's `await`.
-  - `setStrategy` is the only writer of `strategyId`; the switch binds `:model-value` and calls it, never `v-model` on store state. A reload resets the strategy to the default (accepted; persistence is deferred).
+  - In the same step that appends the `TurnRecord`: a successful buy increments `purchases[itemId]`, a successful solve adds `stateDelta(adKind(ad))` to `stateEstimate` (the kind is captured before the `await`, like the display text), and a reputation reading sets `stateEstimate` to its `state` and `reputation` to the reading.
 
 ### AD-8 — One request at a time, and no doomed buys [ADOPTED]
 
@@ -188,7 +189,7 @@ flowchart LR
 - **Prevents:** a double click creating two games or spending two turns, and a buy that is sure to fail but still spends a turn.
 - **Rule:**
   - Turn actions (`solve`, `buy`, `investigateReputation`) and the retries (`refreshMessages`, `refreshShop`) return immediately unless `status === 'playing'`, and their controls render `disabled` otherwise.
-  - While `pending` is true, every action except `load` and `setStrategy` returns immediately without calling the API, and every action control renders `disabled`. `start` sets `pending` too.
+  - While `pending` is true, every action except `load` returns immediately without calling the API, and every action control renders `disabled`. `start` sets `pending` too.
   - A buy control is disabled when gold is known and below the cost. It shows the shortfall in text, linked with `aria-describedby`.
   - Every buy with gold ≥ cost succeeded [V], and a failed buy still costs a turn [V].
 
@@ -214,7 +215,7 @@ flowchart LR
   | `/game/:gameId/shop` | Shop, `ShopPanel` |
   | `/game/:gameId/over` | Game over |
 
-  `AdsPanel`, `ShopPanel`, and `GameOverView` are child-route components rendered through `GameView`'s `<RouterView>`; exactly one is shown at every width. `GameView` itself renders the stats, reputation, Risk level switch, the ads/shop navigation (with the hint highlight), and the activity log.
+  `AdsPanel`, `ShopPanel`, and `GameOverView` are child-route components rendered through `GameView`'s `<RouterView>`; exactly one is shown at every width. `GameView` itself renders the stats, reputation, the ads/shop navigation (with the shop hint from `recommendedItem`), and the activity log.
 
   `GameView` (the parent route) calls `load(route.params.gameId)` from a `watch` with `immediate` on that param. Switching panels never calls `load`. `load` behaves as follows:
   - **No-op** if the store already holds that `gameId` with status `playing` or `over`.
@@ -245,7 +246,7 @@ flowchart LR
 
   **Game save**
   - Key: `mugloar:game:v<G>:<gameId>`.
-  - Shape: `{ gameId, stats, shop, reputation, savedAt }`. The activity log, strategy, board, `status`, `pending`, and `error` are not persisted. A restore sets status `playing`.
+  - Shape: `{ gameId, stats, shop, reputation, savedAt }`. The activity log, purchases, state estimate, board, `status`, `pending`, and `error` are not persisted. A restore sets status `playing`.
   - Only a deep `watch` in the game store writes or removes it:
     - writes while `status === 'playing'`
     - removes it on `over` or `expired`
@@ -337,15 +338,15 @@ flowchart LR
 | File names | Components and views are `PascalCase.vue`. Everything else is `kebab-case.ts`, as allowed by oxlint `unicorn/filename-case`. |
 | Stores | `src/stores/<name>.ts` exports `use<Name>Store`, written in setup-store style. |
 | Tests | `*.spec.ts` in a `__tests__/` folder next to the code under test. Component tests query by role and accessible name. |
-| Types | DTOs end in `Dto` (`AdDto`) and live in `api/`. Domain types (`Ad`, `ShopItem`, `Stats`, `Reputation`, `TurnRecord`, `Deltas`, `Strategy`, `StrategyId`) live in `game/`. |
+| Types | DTOs end in `Dto` (`AdDto`) and live in `api/`. Domain types (`Ad`, `ShopItem`, `Stats`, `Reputation`, `TurnRecord`, `Deltas`, `RankedJob`, `ItemRecommendation`) live in `game/`. |
 | API field names | Domain types keep the API's camelCase names (`adId`, `expiresIn`). No renaming layer. |
 | Design tokens | All colours, spacing, font sizes, and tier colours are CSS custom properties in one global tokens stylesheet. Components use the tokens, never literal values. |
 | Styles | `<style scoped>` per SFC. No CSS framework. |
 | Icons | UI glyphs come from `@lucide/vue`, imported per icon. Themed art is game-icons.net SVG files in `src/assets/icons/` (approved set: Lorc, Delapouite, Sbed). A one-line credits line naming **each icon's author**, the site, and CC BY 3.0 is visible on every screen: inside the game grid on the game screen (AD-14), as the footer elsewhere. |
 | Activity log entries | Only the newest entry shows its flavour subheading; older entries are one line. |
 | Fonts | Self-hosted, never a Google Fonts link. Fredoka for headings and numbers, Nunito for body text. |
-| Shop entry signals | The navigation's shop link shows at most one hint: `critical-health` ("Low health") over `increase-level`. Affordability (CAP-6) is a separate, lower-emphasis marker. |
-| Hint copy | Level hints are keyed by item id in `src/copy.ts` (one line per level item, plus a fallback), so the shown line is deterministic. Wording never promises a better win rate (premise [U]). |
+| Shop entry signals | The navigation's shop link shows at most one hint: "Low on lives" (at 1 life, even when the potion is unaffordable) over "Level up". Affordability (CAP-6) is a separate, lower-emphasis marker. |
+| Hint copy | Recommendation reasons and flags are tavern-voice strings in `src/copy.ts`. Wording never promises an outcome. |
 | Player-facing text | Every error, notice, and empty state uses in-world tavern voice, for example *"The barman went to put up new posters. Come back later, or have a beer."* All of it lives in one module, `src/copy.ts`; no inline user-facing strings. Each message still says what happened, and button labels state the plain action. |
 | Fact tags | Comments or docs stating API behaviour carry `[V]` (with date), `[D]`, or `[U]`, as the spec does. Write "in every probe", never "always". |
 
@@ -375,7 +376,7 @@ To set up during the first build: ESLint `no-restricted-imports` overrides (AD-1
 src/
   App.vue       # becomes a <RouterView> shell; the template's App.spec.ts is rewritten
   api/          # client.ts (fetch, ApiError, base URL), types.ts (DTOs)
-  game/         # decode, registries, cues, strategies, apply-turn, parse-save, domain types
+  game/         # decode, registries, cues, recommendations, apply-turn, parse-save, domain types
   stores/       # game.ts, high-scores.ts
   views/        # StartView, GameView (top bar, nav, log, RouterView), AdsPanel, ShopPanel, GameOverView
   components/   # StatsBar, AdCard, ShopItem, ActivityLog, RiskLevelSwitch, ReputationPanel, …
@@ -394,7 +395,7 @@ stateDiagram-v2
   [*] --> loading: "/game/:id/*" (new id)
   loading --> playing: started, save restored + messages, or board + shop fetched
   loading --> expired: GET messages 404
-  playing --> playing: solve / buy / reputation / refreshMessages (one at a time); setStrategy any time
+  playing --> playing: solve / buy / reputation / refreshMessages (one at a time)
   playing --> over: lives === 0
   playing --> expired: GET messages 404
   over --> loading: play again (start)
@@ -428,8 +429,8 @@ The app runs locally only: `pnpm dev` or `pnpm preview`, or a Docker container.
 | CAP-13 Board refresh failure | `stores/game` refetch, board notice, `copy.ts` | AD-18, AD-13, AD-5 |
 | CAP-14 Continue on another device | `stores/game` `load`, GameView | AD-10, AD-11, AD-5 |
 | CAP-15 Layout | `styles/layout.css`, GameView | AD-10, AD-14, AD-15 |
-| CAP-16 Risk level | `game/strategies`, `stores/game` `strategyId` `sortedBoard` `setStrategy`, RiskLevelSwitch, AdsPanel | AD-4, AD-6, AD-7, AD-15 |
-| CAP-17 Strategy hints | `game/strategies` `shopHint`, `stores/game` `hint`, GameView nav, ShopPanel, `copy.ts` | AD-4, AD-6 |
+| CAP-16 Job recommendations | `game/recommendations` `rankJobs`, `stores/game` `rankedJobs` `stateEstimate`, AdsPanel, JobRow | AD-4, AD-6, AD-7, AD-15 |
+| CAP-17 Shop recommendations | `game/recommendations` `recommendItem` `itemAdvice`, `stores/game` `recommendedItem` `purchases`, GameView nav, ShopPanel | AD-4, AD-6, AD-7 |
 
 ## Open Questions
 
@@ -443,7 +444,7 @@ The app runs locally only: `pnpm dev` or `pnpm preview`, or a Docker container.
 - **TypeScript 7.** It waits until vue-tsc supports it (expected with 7.1 or later).
 - **Vitest 5.** A deliberate later upgrade. Note that it changes the `clearMocks` default.
 - **Environment-based configuration.** Add it when a second API target exists, such as a mock server or the recommendations backend.
-- **Recommendations backend integration.** Client-side strategies (AD-4) are in scope; a backend is a non-goal and needs its own spec. If it arrives, strategy state may move to its own store.
+- **Recommendations backend integration.** Client-side tree v3.4 rules (AD-4) are in scope. A backend is a non-goal; the Java NPC and the TypeScript port are kept in step by hand, both citing `strategy-findings.md`.
 - **Two tabs on the same game.** Unsupported: the last save wins, and the other tab hits 404 and `expired`. Different games in different tabs work. High scores merge on append (AD-9).
 - **Dark mode or theming, and i18n.** Not required. The tokens stylesheet keeps theming cheap later, and the UI copy is English only.
 - **CI pipeline.** Local-only project. Revisit if the repo gains collaborators.
