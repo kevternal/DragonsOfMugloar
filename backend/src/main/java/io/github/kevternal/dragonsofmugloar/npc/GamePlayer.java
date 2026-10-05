@@ -34,10 +34,6 @@ public class GamePlayer {
     static final String NO_PLAYABLE_MOVE = "no playable move";
     static final String BOARD_UNAVAILABLE = "board unavailable";
 
-    /** How the run ended; {@code stats} is null when the game never started. */
-    public record RunResult(String reason, Stats stats) {
-    }
-
     private final MugloarClient client;
     private final PauseControl pause;
     private final List<GameEvents> events;
@@ -49,7 +45,7 @@ public class GamePlayer {
     }
 
     /** Starts the pause reader, plays until the game ends or cannot go on, then reports the end. */
-    public RunResult play() {
+    public void play() {
         pause.start();
         GameState game = null;
         String reason;
@@ -66,10 +62,11 @@ public class GamePlayer {
             reason = "error: " + e;
         }
 
-        RunResult result = new RunResult(reason, game == null ? null : game.stats());
+        Stats stats = game == null ? null : game.stats();
         int used = client.used();
-        events.forEach(e -> e.ended(result.reason(), result.stats(), used));
-        return result;
+        for (GameEvents e : events) {
+            e.ended(reason, stats, used);
+        }
     }
 
     /** Starts a game; its shop is read separately, so a failed read still leaves the start stats. */

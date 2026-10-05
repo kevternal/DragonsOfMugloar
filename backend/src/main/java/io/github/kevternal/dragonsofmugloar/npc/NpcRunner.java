@@ -1,5 +1,6 @@
 package io.github.kevternal.dragonsofmugloar.npc;
 
+import org.jspecify.annotations.NonNull;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 
@@ -13,7 +14,7 @@ public class NpcRunner implements ApplicationRunner {
     }
 
     @Override
-    public void run(ApplicationArguments args) {
+    public void run(@NonNull ApplicationArguments args) {
         player.play();
     }
 }
