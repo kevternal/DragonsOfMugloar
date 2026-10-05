@@ -32,28 +32,4 @@ pnpm lint        # oxlint + ESLint
 pnpm format      # Prettier
 ```
 
-## AI skills (BMAD)
-
-We use the [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD) for spec-driven development: plan the feature first, then build it against that plan.
-
-Installed skills:
-
-- `bmad` – setup, help, status
-- `bmod-method` – planning and build workflows
-- `bmod-core-tools` – standalone tools
-
-### Where they live
-
-```
-.agents/skills/      ← the real files
-.claude/skills/      → symlinks to .agents/skills/
-skills-lock.json     ← installed versions
-```
-
-### Install / update
-
-```sh
-npx skills add bmad-code-org/BMAD-METHOD -a claude-code --skill bmad --skill bmod-core-tools --skill bmod-method
-```
-
-Then ask Claude Code: `run bmad setup`. Run it again later to update.
+AI skills (BMAD), specs and plans live at the repo root — see [../README.md](../README.md).
