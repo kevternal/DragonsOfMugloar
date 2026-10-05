@@ -50,26 +50,68 @@ function rowButton(wrapper: ReturnType<typeof mount>) {
 }
 
 describe('JobRow', () => {
-    it('is one button whose content names the odds and gold first, then the job and turns', async () => {
+    it('is one button whose content names the gold and odds first, then the job and turns', async () => {
         const wrapper = mount(JobRow, { props: { job: job(), disabled: false } })
         const button = rowButton(wrapper)
         expect(button.attributes('aria-label')).toBeUndefined()
         expect(spoken(button.element)).toBe(
-            'Solve: risky, Risky, 41%, 10 gold. Job one. 2 turns left',
+            'Solve: 10 gold, risky, Risky, 41%. Job one. 2 turns left, soon',
         )
         await button.trigger('click')
         expect(wrapper.emitted('solve')).toEqual([['a1']])
     })
 
-    it('shows the label, win %, reward and expiry as visible text', () => {
+    it('shows gold, risk icon, label and win %, ad text, then expiry, in DOM order', () => {
         const wrapper = mount(JobRow, { props: { job: job(), disabled: false } })
         const button = rowButton(wrapper)
-        expect(oddsParts(button.element)).toEqual(['Risky', '41%', '10'])
+        const parts = [...button.element.children].map((n) => n.className)
+        expect(parts).toEqual([
+            'reward reward-small',
+            'risk',
+            'odds',
+            'message',
+            'expiry urgency-soon',
+        ])
+        expect(oddsParts(button.element)).toEqual(['Risky', '41%'])
         expect(visible(button.get('.reward').element)).toBe('10')
+        expect(visible(button.get('.message').element)).toBe('Job one')
         expect(visible(button.get('.expiry').element)).toBe('2')
         expect(button.find('.reward [aria-hidden="true"]').exists()).toBe(true)
         expect(button.find('.expiry [aria-hidden="true"]').exists()).toBe(true)
     })
+
+    it.each([
+        { reward: 99, tier: 'small', icon: 'crown-coin' },
+        { reward: 100, tier: 'medium', icon: 'coins' },
+        { reward: 999, tier: 'medium', icon: 'coins' },
+        { reward: 1000, tier: 'large', icon: 'open-treasure-chest' },
+    ] as const)('shows the $icon icon for a reward of $reward', ({ reward, tier, icon }) => {
+        const wrapper = mount(JobRow, {
+            props: { job: job({ ad: { ...ad, reward } }), disabled: false },
+        })
+        const gold = wrapper.get('.reward')
+        expect(gold.classes()).toContain(`reward-${tier}`)
+        expect(gold.findComponent(GameIcon).props('name')).toBe(icon)
+        expect(spoken(rowButton(wrapper).element)).toContain(`Solve: ${reward} gold, risky, `)
+    })
+
+    it.each([
+        { expiresIn: 1, level: 'critical', said: '1 turn left, expiring' },
+        { expiresIn: 2, level: 'soon', said: '2 turns left, soon' },
+        { expiresIn: 3, level: 'soon', said: '3 turns left, soon' },
+        { expiresIn: 4, level: 'normal', said: '4 turns left' },
+    ] as const)(
+        'marks $expiresIn turns left as $level, in text too',
+        ({ expiresIn, level, said }) => {
+            const wrapper = mount(JobRow, {
+                props: { job: job({ ad: { ...ad, expiresIn } }), disabled: false },
+            })
+            const expiry = wrapper.get('.expiry')
+            expect(expiry.classes()).toContain(`urgency-${level}`)
+            expect(visible(expiry.element)).toBe(String(expiresIn))
+            expect(spoken(rowButton(wrapper).element).endsWith(`Job one. ${said}`)).toBe(true)
+        },
+    )
 
     it.each([
         { tier: 'safe', icon: 'cake-slice' },
@@ -80,32 +122,30 @@ describe('JobRow', () => {
         const wrapper = mount(JobRow, { props: { job: job({ tier }), disabled: false } })
         const riskIcon = wrapper.get('.risk').findComponent(GameIcon)
         expect(riskIcon.props('name')).toBe(icon)
-        expect(spoken(rowButton(wrapper).element)).toContain(`Solve: ${tier}, `)
+        expect(spoken(rowButton(wrapper).element)).toContain(`Solve: 10 gold, ${tier}, `)
     })
 
     it('shows and names each badge with the odds', () => {
         const best = mount(JobRow, { props: { job: job({ best: true }), disabled: false } })
-        expect(spoken(rowButton(best).element)).toContain('41%, 10 gold, Best pick. Job one.')
-        expect(oddsParts(best.element)).toEqual(['Risky', '41%', '10', 'Best pick'])
+        expect(spoken(rowButton(best).element)).toContain(
+            '10 gold, risky, Risky, 41%, Best pick. Job one.',
+        )
+        expect(oddsParts(best.element)).toEqual(['Risky', '41%', 'Best pick'])
 
         const trap = mount(JobRow, { props: { job: job({ flag: 'trap' }), disabled: false } })
-        expect(spoken(rowButton(trap).element)).toContain('41%, 10 gold, Trap. Job one.')
-        expect(oddsParts(trap.element)).toEqual(['Risky', '41%', '10', 'Trap'])
+        expect(spoken(rowButton(trap).element)).toContain('41%, Trap. Job one.')
+        expect(oddsParts(trap.element)).toEqual(['Risky', '41%', 'Trap'])
 
         const state = mount(JobRow, {
             props: { job: job({ flag: 'state-risk' }), disabled: false },
         })
-        expect(spoken(rowButton(state).element)).toContain(
-            '41%, 10 gold, Angers the state. Job one.',
-        )
-        expect(oddsParts(state.element)).toEqual(['Risky', '41%', '10', 'Angers the state'])
+        expect(spoken(rowButton(state).element)).toContain('41%, Angers the state. Job one.')
+        expect(oddsParts(state.element)).toEqual(['Risky', '41%', 'Angers the state'])
 
         const both = mount(JobRow, {
             props: { job: job({ best: true, flag: 'state-risk' }), disabled: false },
         })
-        expect(spoken(rowButton(both).element)).toContain(
-            '41%, 10 gold, Best pick, Angers the state.',
-        )
+        expect(spoken(rowButton(both).element)).toContain('41%, Best pick, Angers the state.')
     })
 
     it('says unknown odds and shows a "?" mark for an unknown label; one turn left', () => {
@@ -122,7 +162,7 @@ describe('JobRow', () => {
         })
         const button = rowButton(wrapper)
         expect(spoken(button.element)).toBe(
-            'Solve: unknown risk, Maybe?, unknown odds, 10 gold. Job one. 1 turn left',
+            'Solve: 10 gold, unknown risk, Maybe?, unknown odds. Job one. 1 turn left, expiring',
         )
         expect(visible(button.get('.risk').element)).toBe('?')
         expect(button.find('.risk .game-icon').exists()).toBe(false)

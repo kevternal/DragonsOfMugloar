@@ -1,5 +1,12 @@
 // Every player-facing string lives here, in tavern voice. Buttons state the plain action.
-import type { GameError, ItemRecommendation, Reputation, RiskTier, StatKey } from '@/game/types'
+import type {
+    GameError,
+    ItemRecommendation,
+    Reputation,
+    RiskTier,
+    StatKey,
+    Urgency,
+} from '@/game/types'
 
 const livesWord = (n: number) => (n === 1 ? 'life' : 'lives')
 
@@ -63,7 +70,8 @@ export const copy = {
         stateRisk: 'Angers the state',
         /*
          * Visually hidden parts of a row's accessible name, which the row's content forms, e.g.
-         * "Solve: safe, Piece of cake, 95%, 34 gold, Best pick. Escort the mayor. 5 turns left".
+         * "Solve: 340 gold, safe, Piece of cake, 95%, Best pick. Escort the mayor. 2 turns left,
+         * soon".
          */
         solve: 'Solve: ',
         tier: {
@@ -77,6 +85,12 @@ export const copy = {
         endMessage: '. ',
         gold: ' gold',
         turnsLeft: (n: number) => (n === 1 ? ' turn left' : ' turns left'),
+        /** After the turns left, so urgency is never conveyed by colour alone (AD-15). */
+        urgency: {
+            critical: ', expiring',
+            soon: ', soon',
+            normal: '',
+        } satisfies Record<Urgency, string>,
     },
     board: {
         notice: 'The barman went to put up new posters. Come back later, or have a beer.',
@@ -149,7 +163,7 @@ export const copy = {
         notFound: 'That one is gone from the board. The board has been checked again.',
     },
     loading: 'Fetching your game...',
-    credits: 'Icons: Lorc, Delapouite, Sbed (game-icons.net, CC BY 3.0)',
+    credits: 'Icons: Lorc, Delapouite, Sbed, Skoll (game-icons.net, CC BY 3.0)',
 }
 
 export function errorMessage(error: GameError): string {

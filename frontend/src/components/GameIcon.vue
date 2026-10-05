@@ -1,11 +1,14 @@
 <script lang="ts">
-// game-icons.net art (CC BY 3.0; Lorc, Delapouite, Sbed; credited in copy.credits). The black
-// background square is stripped from each file; the shape is used as a mask over currentColor.
+// game-icons.net art (CC BY 3.0; Lorc, Delapouite, Sbed, Skoll; credited in copy.credits). The
+// black background square is stripped from each file; the shape is used as a mask over
+// currentColor.
 import breastplate from '@/assets/icons/breastplate.svg'
 import cakeSlice from '@/assets/icons/cake-slice.svg'
 import clawSlashes from '@/assets/icons/claw-slashes.svg'
+import coins from '@/assets/icons/coins.svg'
 import crossedClaws from '@/assets/icons/crossed-claws.svg'
 import crown from '@/assets/icons/crown.svg'
+import crownCoin from '@/assets/icons/crown-coin.svg'
 import deathSkull from '@/assets/icons/death-skull.svg'
 import fairyWings from '@/assets/icons/fairy-wings.svg'
 import footprint from '@/assets/icons/footprint.svg'
@@ -16,6 +19,7 @@ import hourglass from '@/assets/icons/hourglass.svg'
 import jerrycan from '@/assets/icons/jerrycan.svg'
 import levelFour from '@/assets/icons/level-four.svg'
 import metalPlate from '@/assets/icons/metal-plate.svg'
+import openTreasureChest from '@/assets/icons/open-treasure-chest.svg'
 import person from '@/assets/icons/person.svg'
 import rocket from '@/assets/icons/rocket.svg'
 import rollingDices from '@/assets/icons/rolling-dices.svg'
@@ -29,8 +33,10 @@ const ICONS = {
     breastplate,
     'cake-slice': cakeSlice,
     'claw-slashes': clawSlashes,
+    coins,
     'crossed-claws': crossedClaws,
     crown,
+    'crown-coin': crownCoin,
     'death-skull': deathSkull,
     'fairy-wings': fairyWings,
     footprint,
@@ -41,6 +47,7 @@ const ICONS = {
     jerrycan,
     'level-four': levelFour,
     'metal-plate': metalPlate,
+    'open-treasure-chest': openTreasureChest,
     person,
     rocket,
     'rolling-dices': rollingDices,

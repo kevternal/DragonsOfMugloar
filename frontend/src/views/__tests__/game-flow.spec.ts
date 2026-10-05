@@ -313,7 +313,14 @@ describe('game flow', () => {
             boardAndShop()
             const { wrapper } = await mountAt('/game/g1/ads')
             const credits = wrapper.get('.credits').text()
-            for (const part of ['Lorc', 'Delapouite', 'Sbed', 'game-icons.net', 'CC BY 3.0']) {
+            for (const part of [
+                'Lorc',
+                'Delapouite',
+                'Sbed',
+                'Skoll',
+                'game-icons.net',
+                'CC BY 3.0',
+            ]) {
                 expect(credits).toContain(part)
             }
         })
@@ -375,12 +382,12 @@ describe('game flow', () => {
             const list = wrapper.get('section[aria-labelledby="ads-heading"] [role="list"]')
             const rows = list.findAll('li').map((li) => accessibleName(li.get('button')))
             expect(rows).toEqual([
-                'Solve: moderate, Walk in the park, 87%, 80 gold, Best pick. Escort the mayor. 3 turns left',
-                'Solve: risky, Gamble, 55%, 5 gold. Mend the fence. 3 turns left',
-                'Solve: safe, Piece of cake, 95%, 300 gold, Angers the state. Steal a goat from Ann. 3 turns left',
-                'Solve: unknown risk, Evfxl, unknown odds, 40 gold. Fher gur oevqtr. 3 turns left',
-                'Solve: unknown risk, Maybe?, unknown odds, 70 gold. Count the sheep. 3 turns left',
-                'Solve: safe, Sure thing, 100%, 900 gold, Trap. Steal super awesome diamond ring from Bob. 3 turns left',
+                'Solve: 80 gold, moderate, Walk in the park, 87%, Best pick. Escort the mayor. 3 turns left, soon',
+                'Solve: 5 gold, risky, Gamble, 55%. Mend the fence. 3 turns left, soon',
+                'Solve: 300 gold, safe, Piece of cake, 95%, Angers the state. Steal a goat from Ann. 3 turns left, soon',
+                'Solve: 40 gold, unknown risk, Evfxl, unknown odds. Fher gur oevqtr. 3 turns left, soon',
+                'Solve: 70 gold, unknown risk, Maybe?, unknown odds. Count the sheep. 3 turns left, soon',
+                'Solve: 900 gold, safe, Sure thing, 100%, Trap. Steal super awesome diamond ring from Bob. 3 turns left, soon',
             ])
             const locked = list.findAll('li')[3]!
             expect(locked.get('button').attributes('disabled')).toBeDefined()

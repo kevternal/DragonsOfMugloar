@@ -37,6 +37,16 @@ The user approved the preview at https://claude.ai/artifact/6sw4rvS41Em1TMQUhJyr
 | Risk 1 to 4 | lorc/cake-slice, lorc/footprint, delapouite/rolling-dices, sbed/death-skull |
 | Reputation: people, state, underworld | delapouite/person, lorc/crown, lorc/hood |
 
+### Job reward tiers [V 2026-10-05, user-approved preview https://claude.ai/artifact/1SGWmrcxGGPXEAZXjPjV62]
+
+The gold on a job row grows with the reward (`rewardTier` in `src/game/job-cues.ts`). Skoll joins the credited authors.
+
+| Reward | Icon (author/name) |
+|---|---|
+| under 100 | lorc/crown-coin |
+| 100 to 999 | delapouite/coins |
+| 1000 and up | skoll/open-treasure-chest |
+
 ### Shop items
 
 | Item | Icon |
@@ -59,4 +69,4 @@ The game-icons SVGs ship with a black square background path. Strip it and fill 
 
 Lucide icons are used for UI glyphs: check, x, refresh-cw, triangle-alert and info.
 
-The credit line is visible on every screen and names Lorc, Delapouite and Sbed, game-icons.net and CC BY 3.0.
+The credit line is visible on every screen and names Lorc, Delapouite, Sbed and Skoll, game-icons.net and CC BY 3.0.

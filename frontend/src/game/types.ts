@@ -63,6 +63,12 @@ export type TurnResponse = Partial<Record<StatKey, number>>
 /** Risk tier from the `probability` label (risk-cues.md). */
 export type RiskTier = 'safe' | 'moderate' | 'risky' | 'deadly' | 'unknown'
 
+/** How big a job's reward looks (`rewardTier`). */
+export type RewardTier = 'small' | 'medium' | 'large'
+
+/** How close an ad is to expiring (`urgency`). */
+export type Urgency = 'critical' | 'soon' | 'normal'
+
 /** A row flag (CAP-16): bait, or a steal left out by the state guard. */
 export type JobFlag = 'trap' | 'state-risk'
 

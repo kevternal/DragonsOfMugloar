@@ -24,6 +24,18 @@
     --color-risk-deadly: #8a1c1c;
     --color-risk-unknown: #5c4e40;
 
+    /* A job's gold reward (icon and number). A yellower, lighter hue than the moderate amber
+       (CIE76 distance 12.6). Contrast as text: 5.12:1 on surface, 4.64:1 on row hover, 4.75:1
+       on bg. */
+    --color-gold: #7d6e00;
+
+    /* Expiry urgency (AD-4 `urgency`), a text colour only, always also stated in hidden text
+       (AD-15). Critical 9.28:1 on surface and 8.41:1 on row hover; soon 6.38:1 and 5.79:1;
+       normal is the muted colour, 8.02:1 and 7.27:1. */
+    --color-urgency-critical: var(--color-risk-deadly);
+    --color-urgency-soon: var(--color-risk-moderate);
+    --color-urgency-normal: var(--color-muted);
+
     /* Job badges (CAP-16): text on fill, each at least 5.8:1. The best row's border matches
        its badge. */
     --color-best: var(--color-risk-safe);

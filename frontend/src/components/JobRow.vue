@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, useId } from 'vue'
 import { copy } from '@/copy'
-import type { JobFlag, RankedJob, RiskTier } from '@/game/types'
+import { rewardTier, urgency } from '@/game/job-cues'
+import type { JobFlag, RankedJob, RewardTier, RiskTier } from '@/game/types'
 import GameIcon, { type IconName } from './GameIcon.vue'
 
 const { job, disabled } = defineProps<{ job: RankedJob; disabled: boolean }>()
@@ -17,6 +18,13 @@ const TIER_ICONS: Record<Exclude<RiskTier, 'unknown'>, IconName> = {
     deadly: 'death-skull',
 }
 
+// The gold grows with the reward (approved preview, design-assets.md).
+const REWARD_ICONS: Record<RewardTier, IconName> = {
+    small: 'crown-coin',
+    medium: 'coins',
+    large: 'open-treasure-chest',
+}
+
 type BadgeKind = 'best' | JobFlag
 
 const BADGE_TEXT: Record<BadgeKind, string> = {
@@ -26,6 +34,10 @@ const BADGE_TEXT: Record<BadgeKind, string> = {
 }
 
 const icon = computed(() => (job.tier === 'unknown' ? null : TIER_ICONS[job.tier]))
+
+const reward = computed(() => rewardTier(job.ad.reward))
+
+const expiry = computed(() => urgency(job.ad.expiresIn))
 
 const oddsText = computed(() =>
     job.winPct === null ? copy.jobs.unknownOdds : copy.jobs.winPct(job.winPct),
@@ -45,8 +57,9 @@ const badges = computed(() => {
 
 <template>
     <div class="job-row">
-        <!-- CAP-16: one native button per job. Its content forms the name, decisive cues first:
-             "Solve: safe, Piece of cake, 95%, 34 gold, Best pick. <ad>. 5 turns left". -->
+        <!-- CAP-16: one native button per job. Its content forms the name in visual order, decisive
+             cues first: "Solve: 340 gold, safe, Piece of cake, 95%, Best pick. <ad>. 2 turns left,
+             soon". -->
         <button
             type="button"
             class="job"
@@ -55,22 +68,20 @@ const badges = computed(() => {
             :aria-describedby="job.ad.solvable ? undefined : noteId"
             @click="$emit('solve', job.ad.adId)"
         >
+            <span class="reward" :class="`reward-${reward}`">
+                <span class="visually-hidden">{{ copy.jobs.solve }}</span>
+                <GameIcon :name="REWARD_ICONS[reward]" class="reward-icon" />{{ job.ad.reward
+                }}<span class="visually-hidden">{{ copy.jobs.gold }}{{ copy.separator }}</span>
+            </span>
             <span class="risk" aria-hidden="true">
                 <GameIcon v-if="icon" :name="icon" class="risk-icon" />
                 <span v-else class="risk-icon unknown-mark">{{ copy.stats.unknownShort }}</span>
             </span>
             <span class="odds">
-                <span class="visually-hidden"
-                    >{{ copy.jobs.solve }}{{ copy.jobs.tier[job.tier] }}</span
-                >
+                <span class="visually-hidden">{{ copy.jobs.tier[job.tier] }}</span>
                 <span class="label">{{ job.ad.probability }}</span>
                 <span class="visually-hidden">{{ copy.separator }}</span>
                 <span class="pct">{{ oddsText }}</span>
-                <span class="visually-hidden">{{ copy.separator }}</span>
-                <span class="reward">
-                    <GameIcon name="two-coins" class="stat-icon" />{{ job.ad.reward
-                    }}<span class="visually-hidden">{{ copy.jobs.gold }}</span>
-                </span>
                 <template v-for="badge in badges" :key="badge.kind">
                     <span class="visually-hidden">{{ copy.separator }}</span>
                     <span class="badge" :class="badge.kind">{{ badge.text }}</span>
@@ -81,9 +92,12 @@ const badges = computed(() => {
                 >{{ job.ad.message
                 }}<span class="visually-hidden">{{ copy.jobs.endMessage }}</span></span
             >
-            <span class="expiry">
-                <GameIcon name="hourglass" class="stat-icon" />{{ job.ad.expiresIn
-                }}<span class="visually-hidden">{{ copy.jobs.turnsLeft(job.ad.expiresIn) }}</span>
+            <span class="expiry" :class="`urgency-${expiry}`">
+                <GameIcon name="hourglass" />{{ job.ad.expiresIn
+                }}<span class="visually-hidden"
+                    >{{ copy.jobs.turnsLeft(job.ad.expiresIn)
+                    }}{{ copy.jobs.urgency[expiry] }}</span
+                >
             </span>
         </button>
         <p v-if="!job.ad.solvable" :id="noteId" class="note">{{ copy.ads.unsolvable }}</p>
@@ -95,16 +109,16 @@ const badges = computed(() => {
     container: job-row / inline-size;
 }
 
-/* Narrow: icon | odds, reward and badges | expiry, over icon | message (two lines) | expiry.
-   The expiry spans both lines, so it centres on the row like the icon. */
+/* Narrow: gold | icon | odds and badges | expiry, over gold | icon | message (two lines) |
+   expiry. The gold, icon and expiry span both lines, so they centre on the row. */
 .job {
     /* Contains the visually hidden name parts. */
     position: relative;
     display: grid;
     grid-template-areas:
-        'risk odds expiry'
-        'risk message expiry';
-    grid-template-columns: auto minmax(0, 1fr) auto;
+        'reward risk odds expiry'
+        'reward risk message expiry';
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
     gap: 0 var(--space-2);
     align-items: center;
     width: 100%;
@@ -249,13 +263,45 @@ const badges = computed(() => {
     white-space: nowrap;
 }
 
+/* Narrow: the coin sits over the number, so the column stays slim; the same width on every
+   row keeps the icons in line. */
+.reward {
+    grid-area: reward;
+    flex-direction: column;
+    gap: 0;
+    min-width: 4.4rem;
+    color: var(--color-gold);
+}
+
+/* The icon grows slightly with the reward; em follows the stat's font size (AD-14). */
+.reward-icon {
+    font-size: 1.2em;
+}
+
+.reward-medium .reward-icon {
+    font-size: 1.35em;
+}
+
+.reward-large .reward-icon {
+    font-size: 1.5em;
+}
+
+/* Text colour only: the hidden text also states the urgency (AD-15). */
 .expiry {
     grid-area: expiry;
     justify-content: flex-end;
 }
 
-.stat-icon {
-    color: var(--color-muted);
+.urgency-critical {
+    color: var(--color-urgency-critical);
+}
+
+.urgency-soon {
+    color: var(--color-urgency-soon);
+}
+
+.urgency-normal {
+    color: var(--color-urgency-normal);
 }
 
 .note {
@@ -268,9 +314,14 @@ const badges = computed(() => {
    64rem at the 10px root = 640px [V, Chrome, 2026-10-05]. */
 @container job-row (min-width: 64rem) {
     .job {
-        grid-template-areas: 'risk odds message expiry';
-        grid-template-columns: auto minmax(0, 30rem) minmax(0, 1fr) 5rem;
+        grid-template-areas: 'reward risk odds message expiry';
+        grid-template-columns: 8rem auto minmax(0, 30rem) minmax(0, 1fr) 5rem;
         padding: var(--space-2) var(--space-3);
+    }
+
+    .reward {
+        flex-direction: row;
+        gap: var(--space-1);
     }
 }
 </style>
