@@ -34,6 +34,43 @@ java -jar target/dragons-of-mugloar-0.0.1-SNAPSHOT.jar
 
 Run the tests with `./mvnw test`. Settings (API URL, timeouts, retry delays, history folder) are in `backend/src/main/resources/application.yaml`.
 
+## Run the Frontend
+
+Vue 3 + Vite + TypeScript frontend.
+
+### Requirements
+
+- Node `^22.18.0` or `>=24.12.0`
+- pnpm
+
+### Run
+
+```sh
+cd frontend
+pnpm install
+pnpm dev
+```
+
+Opens on http://localhost:5173.
+
+### Build
+
+```sh
+pnpm build
+```
+
+Type-checks and builds to `dist/`. Preview the build with `pnpm preview`.
+
+### Other commands
+
+```sh
+pnpm test:unit   # unit tests (Vitest)
+pnpm lint        # oxlint + ESLint
+pnpm format      # Prettier
+```
+
+AI skills (BMAD), specs and plans live at the repo root — see [../README.md](../README.md).
+
 ## AI skills (BMAD)
 
 We use the [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD) for spec-driven development: plan the feature first, then build it against that plan.
