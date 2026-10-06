@@ -484,13 +484,8 @@ export const useGameStore = defineStore('game', () => {
                 return
             }
 
-            const err = toError(e)
-
-            if (err.kind === 'not-found') {
-                markExpired()
-            } else {
-                error.value = err
-            }
+            // AD-5: only a board 404 means the game is gone; the next board read decides.
+            error.value = toError(e)
         } finally {
             if (isCurrent(id)) {
                 pending.value = false

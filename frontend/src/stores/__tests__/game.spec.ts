@@ -40,7 +40,9 @@ function stubApi(routes: Record<string, Handler>) {
         const key = `${init?.method ?? 'GET'} ${url}`
         calls.push(key)
         const handler = routes[key]
-        if (!handler) throw new Error(`No stub for ${key}`)
+        if (!handler) {
+            throw new Error(`No stub for ${key}`)
+        }
         return Promise.resolve(handler())
     })
     vi.stubGlobal('fetch', fn)
@@ -393,7 +395,7 @@ describe('game store', () => {
         expect(calls.filter((c) => c === 'GET /g1/shop')).toHaveLength(2)
     })
 
-    it('refreshShop is a no-op while pending and 404 means expired', async () => {
+    it('refreshShop is a no-op while pending and a 404 is an error, not expiry (AD-5)', async () => {
         let fail = true
         const calls = stubApi({
             ...base,
@@ -407,7 +409,8 @@ describe('game store', () => {
         game.pending = false
         fail = false
         await game.refreshShop()
-        expect(game.status).toBe('expired')
+        expect(game.status).toBe('playing')
+        expect(game.error).toEqual({ kind: 'not-found', status: 404 })
         expect(game.pending).toBe(false)
     })
 

@@ -7,7 +7,9 @@ import { copy } from '@/copy'
 const router = useRouter()
 const route = useRoute()
 router.afterEach((_to, from) => {
-    if (from.name === undefined) return
+    if (from.name === undefined) {
+        return
+    }
     void nextTick(() => document.querySelector<HTMLElement>('h1')?.focus())
 })
 </script>

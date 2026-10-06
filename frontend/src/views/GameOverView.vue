@@ -10,7 +10,9 @@ const router = useRouter()
 // AD-10: /over renders from the game. If the store doesn't hold this game as over
 // (for example after a reload), go back to the start screen.
 const holdsGame = game.status === 'over' && game.gameId === route.params.gameId
-if (!holdsGame) void router.replace({ name: 'start' })
+if (!holdsGame) {
+    void router.replace({ name: 'start' })
+}
 
 // Snapshot, so "Play again" resetting the store doesn't blank the screen.
 const finalScore = game.stats.score

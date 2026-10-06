@@ -19,10 +19,16 @@ export function applyTurn(
         if (value === undefined && key === 'turn' && incrementTurn && prev.turn !== null) {
             value = prev.turn + 1
         }
-        if (value === undefined) continue
+        if (value === undefined) {
+            continue
+        }
+
         stats[key] = value
         const before = prev[key]
-        if (before !== null) deltas[key] = value - before
+
+        if (before !== null) {
+            deltas[key] = value - before
+        }
     }
     return { stats, deltas }
 }

@@ -5,15 +5,11 @@
     "browser": true
   },
   "categories": {
-    "correctness": "error",
-    "pedantic": "warn",
-    "style": "warn"
+    "correctness": "error"
   },
   "rules": {
+    "eslint/curly": ["error", "all"],
     "unicorn/filename-case": ["warn", { "cases": { "kebabCase": true, "pascalCase": true } }],
-    "vitest/consistent-test-filename": ["warn", { "pattern": ".*\\.spec\\.[tj]sx?$" }],
-    "vitest/no-importing-vitest-globals": "off",
-    "vitest/prefer-describe-function-title": "off",
-    "eslint/capitalized-comments": "off"
+    "vitest/consistent-test-filename": ["warn", { "pattern": ".*\\.spec\\.[tj]sx?$" }]
   }
 }
