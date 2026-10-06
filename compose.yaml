@@ -6,3 +6,8 @@ services:
     tty: true
     volumes:
       - ./backend/games-history:/app/games-history
+
+  web:
+    build: ./frontend
+    ports:
+      - "8080:80"

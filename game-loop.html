@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mugloar Game Loop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column; each diagram, tree or table sits in its own scrollable panel. */
+:root {
+  --bg: #f6f7f4;
+  --panel: #ffffff;
+  --fg: #1d2421;
+  --muted: #5b6661;
+  --line: #d9ddd7;
+  --accent: #2f6b4f;
+  --accent-soft: #e3efe8;
+  --display: "Fraunces", Georgia, serif;
+  --body: "Source Sans 3", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #131816; --panel: #1b211e; --fg: #e4ebe7; --muted: #9aa7a0;
+    --line: #2e3833; --accent: #7fc4a0; --accent-soft: #22322a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #131816; --panel: #1b211e; --fg: #e4ebe7; --muted: #9aa7a0;
+  --line: #2e3833; --accent: #7fc4a0; --accent-soft: #22322a; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--fg); font: 16px/1.55 var(--body); margin: 0; }
+.wrap { max-width: 980px; margin: 0 auto; padding-inline: 16px; padding-block: 40px 64px; display: grid; gap: 40px; }
+header { display: grid; gap: 8px; }
+.eyebrow { font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+h1 { font: 600 clamp(28px, 5vw, 40px)/1.1 var(--display); margin: 0; text-wrap: balance; }
+h2 { font: 600 24px/1.2 var(--display); margin: 0; text-wrap: balance; }
+h3 { font: 600 15px/1.3 var(--body); margin: 0; }
+p { margin: 0; max-width: 68ch; }
+.lede { color: var(--muted); }
+section { display: grid; gap: 16px; min-width: 0; }
+nav.docs { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 15px; }
+nav.docs a { color: var(--accent); }
+nav.docs [aria-current] { color: var(--fg); font-weight: 600; text-decoration: none; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+.diagram { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; overflow-x: auto; min-width: 0; }
+.diagram pre { margin: 0; }
+.diagram pre.mermaid { display: flex; justify-content: center; }
+code, .mono { font-family: var(--mono); font-size: 13px; }
+code { background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
+.rules { margin: 0; padding-left: 22px; display: grid; gap: 6px; max-width: 72ch; }
+.rules li::marker { color: var(--accent); }
+.tiers table { border-collapse: collapse; width: 100%; font-size: 15px; }
+.tiers th, .tiers td { text-align: left; vertical-align: top; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); }
+.tiers th { font: 500 12px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.tiers tr:last-child td { border-bottom: 0; }
+.tiers .num { font-variant-numeric: tabular-nums; }
+.tree { font-family: var(--mono); font-size: 13px; line-height: 1.6; margin: 0; white-space: pre; }
+.note { border-left: 3px solid var(--accent); padding: 4px 0 4px 14px; color: var(--muted); font-size: 15px; max-width: 72ch; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <nav class="docs" aria-label="Project docs"><a href="frontend-architecture.html">Frontend</a><a href="backend-architecture.html">Backend</a><a aria-current="page">Game loop</a><a href="README.md">README</a></nav>
+    <span class="eyebrow">Dragons of Mugloar · one turn at a time</span>
+    <h1>Mugloar game loop</h1>
+    <p class="lede">How one game runs against the API, from start to game over: first what the API itself does, then how the bot and the browser client each drive it.</p>
+  </header>
+
+  <section>
+    <h2>What a turn is</h2>
+    <p>A game is a sequence of turns, and only three calls take one. Everything else is a free read.</p>
+    <div class="diagram tiers">
+      <table>
+        <thead><tr><th>Call</th><th>Takes a turn</th><th>Returns</th></tr></thead>
+        <tbody>
+          <tr><td><code>POST /game/start</code></td><td>no</td><td>gameId, 3 lives, 0 gold, level 0, score 0, turn 0</td></tr>
+          <tr><td><code>GET /:gameId/messages</code></td><td>no</td><td>the board: about ten ads, each with a reward, a label and <code>expiresIn</code> turns</td></tr>
+          <tr><td><code>GET /:gameId/shop</code></td><td>no</td><td>the items for sale; the same for the whole game</td></tr>
+          <tr><td><code>POST /:gameId/solve/:adId</code></td><td>yes</td><td>success, lives, gold, score, turn, a flavour message</td></tr>
+          <tr><td><code>POST /:gameId/shop/buy/:itemId</code></td><td>yes, even when it fails</td><td>success, gold, lives, level, turn</td></tr>
+          <tr><td><code>POST /:gameId/investigate/reputation</code></td><td>yes</td><td>people, state, underworld; no stats</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul class="rules">
+      <li><strong>Stats only come back from turns.</strong> There is no call that reads lives, gold or score for free, so a client keeps its own copy and merges each response into it.</li>
+      <li><strong>Ads expire by turns,</strong> not by time. A board read stays valid until the next turn.</li>
+      <li><strong>Game over</strong> is a response with 0 lives. After that, reading the board returns 404.</li>
+      <li><strong>Idle games expire</strong> somewhere between 5 and about 40 minutes after the last action; the exact timeout is unknown. Reading the board of an expired game returns 404.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>One game on the wire</h2>
+    <div class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+  participant C as Client (bot or browser)
+  participant M as Mugloar API
+  C->>M: POST /game/start
+  M-->>C: gameId, starting stats
+  C->>M: GET /:gameId/shop
+  M-->>C: items (read once)
+  loop until lives = 0
+    C->>M: GET /:gameId/messages
+    M-->>C: board
+    Note over C: pick a job or an item
+    alt solve
+      C->>M: POST /:gameId/solve/:adId
+      M-->>C: success, lives, gold, score, turn
+    else buy
+      C->>M: POST /:gameId/shop/buy/:itemId
+      M-->>C: success, gold, lives, level, turn
+    end
+    Note over C: merge stats, log the turn
+  end
+  Note over C: lives = 0: game over
+</pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>In the bot</h2>
+    <p><code>GamePlayer.play()</code> runs this loop on its own. The decision tree picks every move; Enter pauses between turns.</p>
+    <div class="diagram">
+<pre class="mermaid">
+flowchart TD
+  s(["Start"]) --> start["POST /game/start"]
+  start --> shop["GET /shop&lt;br/&gt;once per game"]
+  shop --> alive{"Lives left?"}
+  alive -- no --> over["Summary: game over"]
+  alive -- yes --> paused{"Paused?"}
+  paused -- "yes: wait for Enter" --> paused
+  paused -- no --> fetch["GET /messages&lt;br/&gt;decode, drop known-gone ads"]
+  fetch -- "404" --> exp["Summary: game expired"]
+  fetch -- ok --> decide["Strategy.decide()"]
+  decide -- "nothing playable" --> stop["Summary: no playable move"]
+  decide -- Solve --> solve["POST /solve/:adId"]
+  decide -- Buy --> buy["POST /shop/buy/:itemId"]
+  solve -- "404: ad gone" --> refetch["Forget it, read the board&lt;br/&gt;once more, decide again"]
+  buy -- "404: item gone" --> refetch
+  refetch -- "something to play" --> decide
+  refetch -- "404 or nothing to play" --> stop2["Summary: board unavailable"]
+  solve -- ok --> update["Merge stats,&lt;br/&gt;update the state estimate"]
+  buy -- ok --> update
+  update --> log["Report the turn:&lt;br/&gt;console and history file"]
+  log --> alive
+</pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>In the browser</h2>
+    <p>The browser client runs the same loop, but the player makes every move. Each click goes through one pipeline in the game store.</p>
+    <div class="diagram">
+<pre class="mermaid">
+flowchart TD
+  s(["Start a new game"]) --> start["POST /game/start"]
+  start --> load["GET /shop, then GET /messages"]
+  open(["Open a game link"]) --> load
+  load --> wait["Show board and shop,&lt;br/&gt;with hints; wait for the player"]
+  wait -- "solve, buy or ask around" --> guard["Disable every control&lt;br/&gt;snapshot the stats"]
+  guard --> act["POST solve, buy&lt;br/&gt;or reputation"]
+  act -- ok --> merge["Merge stats, add a log entry,&lt;br/&gt;update the state estimate"]
+  act -- "error, including a 404" --> err["Show the error"]
+  merge --> dead{"Lives 0?"}
+  dead -- yes --> over["Game over screen"]
+  dead -- no --> board["GET /messages"]
+  err --> board
+  board -- ok --> wait
+  board -- "404" --> expired["Back to start:&lt;br/&gt;game expired notice"]
+  board -- "network, 5xx, 429" --> retry["Retry after 2 s, then 5 s"]
+  retry -- ok --> wait
+  retry -- "still failing" --> stale["Solving blocked;&lt;br/&gt;Check the board again button"]
+  stale --> board
+</pre>
+    </div>
+    <p class="note">Opening a game link in a fresh tab loads the board and shop, but the stats show as unknown until the next turn returns them. The API has no free way to read them.</p>
+  </section>
+
+  <section>
+    <h2>Bot and browser side by side</h2>
+    <div class="diagram tiers">
+      <table>
+        <thead><tr><th></th><th>Bot</th><th>Browser</th></tr></thead>
+        <tbody>
+          <tr><td>Who picks the move</td><td>The decision tree, every turn</td><td>The player; the same tree only ranks jobs and suggests items</td></tr>
+          <tr><td>Board read</td><td>At the start of every turn</td><td>On load, and after every turn</td></tr>
+          <tr><td>Board retries</td><td>2 s and 5 s, on network, 5xx, 429</td><td>Same, then a button to try again</td></tr>
+          <tr><td>404 on solve or buy</td><td>The ad or item is gone: forget it and decide again on a fresh board</td><td>Shows the error; the board refresh that follows decides</td></tr>
+          <tr><td>Reputation</td><td>Never asked; estimated from solved jobs</td><td>The player can ask (costs a turn); the reading replaces the estimate</td></tr>
+          <tr><td>Pausing</td><td>Enter, between turns</td><td>Not needed: nothing happens until the player clicks</td></tr>
+          <tr><td>Record of the game</td><td>Console plus <code>games-history/</code> file</td><td>Activity log, in memory for this game</td></tr>
+          <tr><td>Ends on</td><td>0 lives, expiry, nothing playable, or Ctrl+C</td><td>0 lives, or expiry</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Architecture details: <a href="backend-architecture.html">backend</a> · <a href="frontend-architecture.html">frontend</a>.</p>
+  </section>
+</div>
+
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+mermaid.initialize({ startOnLoad: false, theme: dark ? "dark" : "neutral" });
+await mermaid.run();
+</script>
+</body>
+</html>

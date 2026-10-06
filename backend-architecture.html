@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mugloar NPC Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column; each diagram, tree or table sits in its own scrollable panel. */
+:root {
+  --bg: #f6f7f4;
+  --panel: #ffffff;
+  --fg: #1d2421;
+  --muted: #5b6661;
+  --line: #d9ddd7;
+  --accent: #2f6b4f;
+  --accent-soft: #e3efe8;
+  --display: "Fraunces", Georgia, serif;
+  --body: "Source Sans 3", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #131816; --panel: #1b211e; --fg: #e4ebe7; --muted: #9aa7a0;
+    --line: #2e3833; --accent: #7fc4a0; --accent-soft: #22322a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #131816; --panel: #1b211e; --fg: #e4ebe7; --muted: #9aa7a0;
+  --line: #2e3833; --accent: #7fc4a0; --accent-soft: #22322a; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--fg); font: 16px/1.55 var(--body); margin: 0; }
+.wrap { max-width: 980px; margin: 0 auto; padding-inline: 16px; padding-block: 40px 64px; display: grid; gap: 40px; }
+header { display: grid; gap: 8px; }
+.eyebrow { font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+h1 { font: 600 clamp(28px, 5vw, 40px)/1.1 var(--display); margin: 0; text-wrap: balance; }
+h2 { font: 600 24px/1.2 var(--display); margin: 0; text-wrap: balance; }
+h3 { font: 600 15px/1.3 var(--body); margin: 0; }
+p { margin: 0; max-width: 68ch; }
+.lede { color: var(--muted); }
+section { display: grid; gap: 16px; min-width: 0; }
+nav.docs { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 15px; }
+nav.docs a { color: var(--accent); }
+nav.docs [aria-current] { color: var(--fg); font-weight: 600; text-decoration: none; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+.diagram { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; overflow-x: auto; min-width: 0; }
+.diagram pre { margin: 0; }
+.diagram pre.mermaid { display: flex; justify-content: center; }
+code, .mono { font-family: var(--mono); font-size: 13px; }
+code { background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
+.rules { margin: 0; padding-left: 22px; display: grid; gap: 6px; max-width: 72ch; }
+.rules li::marker { color: var(--accent); }
+.tiers table { border-collapse: collapse; width: 100%; font-size: 15px; }
+.tiers th, .tiers td { text-align: left; vertical-align: top; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); }
+.tiers th { font: 500 12px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.tiers tr:last-child td { border-bottom: 0; }
+.tiers .num { font-variant-numeric: tabular-nums; }
+.tree { font-family: var(--mono); font-size: 13px; line-height: 1.6; margin: 0; white-space: pre; }
+.note { border-left: 3px solid var(--accent); padding: 4px 0 4px 14px; color: var(--muted); font-size: 15px; max-width: 72ch; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <nav class="docs" aria-label="Project docs"><a href="frontend-architecture.html">Frontend</a><a aria-current="page">Backend</a><a href="game-loop.html">Game loop</a><a href="README.md">README</a></nav>
+    <span class="eyebrow">backend · Spring Boot 4 · Java 25</span>
+    <h1>Mugloar NPC architecture</h1>
+    <p class="lede">A console app that plays Dragons of Mugloar on its own. It starts a game, picks a move every turn with a fixed decision tree, and keeps going until the dragon dies. It is not a server: it has no HTTP endpoints, and the browser client does not use it.</p>
+  </header>
+
+  <section>
+    <h2>How it runs</h2>
+    <p>Spring Boot starts without a web server. Spring wires the parts together in <code>NpcConfig</code>, then <code>NpcRunner</code> calls <code>GamePlayer.play()</code> once. When that game ends, the app exits.</p>
+    <div class="diagram tiers">
+      <table>
+        <thead><tr><th>How</th><th>Command</th></tr></thead>
+        <tbody>
+          <tr><td>Docker (from the repo root)</td><td><code>docker compose run --rm --build npc</code></td></tr>
+          <tr><td>JDK 25</td><td><code>cd backend &amp;&amp; ./mvnw package -DskipTests &amp;&amp; java -jar target/*.jar</code></td></tr>
+          <tr><td>Tests</td><td><code>./mvnw test</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul class="rules">
+      <li><strong>Enter</strong> pauses or resumes between turns. <strong>Ctrl+C</strong> stops the run.</li>
+      <li>Use <code>docker compose run</code>, not <code>up</code>: <code>up</code> doesn't forward the keyboard and prefixes every line, which breaks the status panel.</li>
+      <li>Each game is also written to <code>backend/games-history/&lt;start time&gt;-&lt;gameId&gt;.txt</code>.</li>
+      <li>Settings live in <code>application.yaml</code>: API URL, User-Agent, timeouts (connect 5 s, read 10 s), retry delays, history folder.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Folder structure</h2>
+    <div class="diagram">
+<pre class="tree">backend/src/main/java/io/github/kevternal/dragonsofmugloar/
+├── DragonsOfMugloarApplication.java   Spring Boot entry point, no web server
+└── npc/
+    ├── NpcConfig.java                 the single wiring point: builds every bean
+    ├── NpcRunner.java                 ApplicationRunner: plays one game on startup
+    ├── GamePlayer.java                the turn loop: read, decide, act, report
+    ├── NpcProperties.java             npc.* settings (history folder)
+    ├── api/                           the only code that makes HTTP calls
+    │   ├── MugloarClient.java         one method per endpoint; retries for board reads
+    │   ├── MugloarApiException.java   one error type: EXPIRED, GONE, HTTP or NETWORK
+    │   ├── MugloarProperties.java     mugloar.* settings (URL, User-Agent, retry delays)
+    │   └── *Dto.java                  response records, exactly as the API sends them
+    ├── game/                          pure Java: no Spring, no I/O
+    │   ├── GameState.java             one game's state: stats, shop, purchases, state estimate
+    │   ├── Strategy.java              decide(): the decision tree
+    │   ├── Risk.java                  label → tier and measured win rate
+    │   ├── AdDecoder.java             decodes base64 / ROT13 ads
+    │   ├── AdKind.java                bait and steal detection; reputation change per job
+    │   ├── GameEvents.java            the port the views implement
+    │   └── Ad, ShopItem, Stats, TurnRecord, Decision   domain records
+    └── console/                       the views
+        ├── ConsoleView.java           GameEvents → stdout (the only stdout writer)
+        ├── StatusPanel.java           the panel pinned below the log
+        ├── ConsoleFormat.java         the text of every line, as pure functions
+        ├── HistoryLog.java            GameEvents → games-history/ file
+        └── PauseControl.java          Enter toggles pause (background stdin reader)</pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Architecture</h2>
+    <p>Dependencies point inward to <code>game/</code>, which has no Spring and no I/O, so the decision tree and the game state are unit-tested with plain data. <code>GamePlayer</code> is the only class that talks to both the API and the game state. It reports through the <code>GameEvents</code> port, so the console and the history file are two views of the same events, and neither knows about the other.</p>
+    <div class="diagram">
+<pre class="mermaid">
+flowchart LR
+  app["DragonsOfMugloarApplication"] --> config["NpcConfig&lt;br/&gt;wires the beans"]
+  config --> runner["NpcRunner"]
+  runner --> player["GamePlayer&lt;br/&gt;turn loop"]
+  player --> client["api/ MugloarClient&lt;br/&gt;the only HTTP caller"]
+  player --> state["game/ GameState"]
+  state --> strategy["game/ Strategy&lt;br/&gt;decide()"]
+  strategy --> risk["game/ Risk"]
+  player --> pause["console/ PauseControl"]
+  player -- "GameEvents" --> view["console/ ConsoleView"]
+  player -- "GameEvents" --> history["console/ HistoryLog"]
+  client -- HTTPS --> ext[("dragonsofmugloar.com&lt;br/&gt;/api/v2")]
+  view --> out[/"stdout: entries and status panel"/]
+  history --> file[/"games-history/*.txt"/]
+  inp[/"stdin: Enter"/] --> pause
+</pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Talking to the API</h2>
+    <p><code>MugloarClient</code> wraps Spring's <code>RestClient</code>. It sends its own User-Agent, because the API rejects some default ones. Every call goes through one <code>send()</code>, which turns any failure into a <code>MugloarApiException</code>.</p>
+    <div class="diagram tiers">
+      <table>
+        <thead><tr><th>Call</th><th>Endpoint</th><th>Retried</th><th>A 404 means</th></tr></thead>
+        <tbody>
+          <tr><td><code>start()</code></td><td><code>POST /game/start</code></td><td>no</td><td>error</td></tr>
+          <tr><td><code>shop()</code></td><td><code>GET /:gameId/shop</code></td><td>no</td><td>error</td></tr>
+          <tr><td><code>messages()</code></td><td><code>GET /:gameId/messages</code></td><td>after 2 s and 5 s, on network errors, 5xx and 429</td><td><code>EXPIRED</code>: the game is over or gone</td></tr>
+          <tr><td><code>solve()</code></td><td><code>POST /:gameId/solve/:adId</code></td><td>never: a retry could take a second turn</td><td><code>GONE</code>: the ad has expired</td></tr>
+          <tr><td><code>buy()</code></td><td><code>POST /:gameId/shop/buy/:itemId</code></td><td>never: a failed buy still takes a turn</td><td><code>GONE</code>: the item is gone</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul class="rules">
+      <li><strong>No reputation calls.</strong> Asking for reputation costs a turn, so the NPC keeps its own estimate instead: steal −2, infiltrate +2, investigate +1 per successful solve.</li>
+      <li><strong>After a GONE:</strong> the player remembers the dead ad or item, reads the board once more and decides again. If that read fails or leaves nothing to play, the NPC ends the game itself.</li>
+      <li><strong>No request spacing or budget.</strong> Requests go out as fast as the server answers. The summary prints how many were sent.</li>
+      <li><strong>Tests never call the live API.</strong> HTTP is mocked, and clocks and sleeps are injected.</li>
+    </ul>
+    <p class="note">The full turn-by-turn flow, and how it differs from the browser client, is in the <a href="game-loop.html">game loop</a> doc.</p>
+  </section>
+
+  <section>
+    <h2>Decision tree</h2>
+    <p>Each label maps to a tier, and to a win rate measured over thousands of live solves:</p>
+    <div class="diagram tiers">
+      <table>
+        <thead><tr><th>Tier</th><th>Label and win rate</th></tr></thead>
+        <tbody>
+          <tr><td>Safe</td><td>Sure thing 1.00 · Piece of cake 0.95</td></tr>
+          <tr><td>Moderate</td><td>Walk in the park 0.87 · Quite likely 0.72 · Hmmm.... 0.63</td></tr>
+          <tr><td>Risky</td><td>Gamble 0.55 · Risky 0.41 · Rather detrimental 0.37</td></tr>
+          <tr><td>Deadly</td><td>Playing with fire 0.31 · Suicide mission 0.06 · Impossible 0.00</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>In the tree, <strong>safe</strong> means a Safe-tier label and <strong>deadly</strong> a Deadly-tier label. Every turn the tree runs from top to bottom, and the first rule that matches decides the move:</p>
+    <div class="diagram">
+<pre class="mermaid">
+flowchart TD
+  b(["Board"]) --> f1["Drop bait ads&lt;br/&gt;Steal super awesome diamond …"]
+  f1 --> f2{"Would a steal push state&lt;br/&gt;reputation below −8, or is&lt;br/&gt;bait already showing?"}
+  f2 -- yes --> f2a["Also drop steals&lt;br/&gt;unless nothing else is left"]
+  f2 -- no --> r1
+  f2a --> r1{"1 life and a&lt;br/&gt;potion affordable?"}
+  r1 -- yes --> heal["Buy healing potion"]
+  r1 -- no --> r2{"2 lives and&lt;br/&gt;no safe ad?"}
+  r2 -- "gold ≥ 350" --> w2["Buy a +2 item"]
+  r2 -- "no, or less gold" --> r3{"2+ lives, gold ≥ 400,&lt;br/&gt;and not every ad safe?"}
+  r3 -- yes --> lvl["Buy a +2 item&lt;br/&gt;least bought of the five"]
+  r3 -- no --> r4{"Every ad deadly&lt;br/&gt;and 2+ lives?"}
+  r4 -- "gold ≥ 350" --> lvl2["Buy a +2 item"]
+  r4 -- "no, or less gold" --> r5{"Gold below&lt;br/&gt;a potion?"}
+  r5 -- yes --> safest["Solve the lowest-tier ad,&lt;br/&gt;then highest reward"]
+  r5 -- no --> best["Solve the best-value ad&lt;br/&gt;win rate × reward −&lt;br/&gt;loss rate × loss cost"]
+</pre>
+    </div>
+    <ul class="rules">
+      <li><strong>Why heal only at 1 life:</strong> a potion costs 50 gold and a turn. At 2 lives a level item is the better buy, since it makes ads easier instead of just adding a buffer.</li>
+      <li><strong>Why it levels so hard:</strong> levels are the only thing that makes labels easier, and difficulty rises every turn. Gold has no value at game over, so anything above a small potion reserve goes into +2 items.</li>
+      <li><strong>Why it stops levelling once every ad is safe:</strong> those levels would change nothing, so every turn becomes a solve and the score grows fastest.</li>
+      <li><strong>Why the loss cost:</strong> a loss costs a potion and a turn to buy it. The loss cost is 75 plus the best safe reward on the board, which is what that turn would otherwise have earned. It keeps long shots from beating solid jobs: a 63% job paying 70 beats a 31% job paying 200. Of the bases tried (50, 65, 75, 100), 75 played best: lower took too many risks, and 100 slowed income.</li>
+      <li><strong>Why only +2 items:</strong> a +1 item eases about 3% of ads but costs a whole turn. Every losing test game bought piles of them, and the best games bought almost none.</li>
+      <li><strong>Why skip bait and limit steals:</strong> bait always fails. Steals succeed, but each one lowers the state reputation by 2, and bait starts showing up once state falls to about −10. Stopping steals at −8 keeps bait off the board. Infiltrate (+2) and investigate (+1) jobs raise state back up.</li>
+    </ul>
+    <p class="note">The browser client shows the same tree as hints: it ranks jobs by this value and marks the item the tree would buy. See the <a href="frontend-architecture.html">frontend</a> doc.</p>
+  </section>
+
+  <section>
+    <h2>Terminal output</h2>
+    <p>Turn entries scroll up, and the status panel stays pinned at the bottom with only its numbers changing. The same entries, without the panel, go to the history file. When output is redirected, the panel becomes one plain status line per turn.</p>
+    <div class="diagram">
+<pre class="mono"> ✓ Solve  Help defending field in Northdale from the intruders (Quite likely, 238)
+   You successfully solved the mission!
+   +238 gold
+ ✓ Buy    Iron Plating
+   −300 gold
+┌─────────────────────────────────────────────────────────────────┐
+│ Turn 94     Lives 3    Level 58    Gold 231      Score 7097     │
+│ ▶ running · Enter = pause                                       │
+└─────────────────────────────────────────────────────────────────┘</pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Where to change what</h2>
+    <div class="diagram tiers">
+      <table>
+        <thead><tr><th>To change</th><th>Edit</th></tr></thead>
+        <tbody>
+          <tr><td>Decision rules, thresholds, the loss cost</td><td><code>game/Strategy.java</code></td></tr>
+          <tr><td>Labels, tiers, win rates</td><td><code>game/Risk.java</code></td></tr>
+          <tr><td>Bait pattern, reputation change per job</td><td><code>game/AdKind.java</code></td></tr>
+          <tr><td>Turn order, 404 handling</td><td><code>GamePlayer.java</code></td></tr>
+          <tr><td>Endpoints, retries</td><td><code>api/MugloarClient.java</code>, <code>application.yaml</code></td></tr>
+          <tr><td>Which beans exist and how they connect</td><td><code>NpcConfig.java</code></td></tr>
+          <tr><td>Log lines, status panel</td><td><code>console/ConsoleFormat.java</code>, <code>console/StatusPanel.java</code></td></tr>
+          <tr><td>History file</td><td><code>console/HistoryLog.java</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+mermaid.initialize({ startOnLoad: false, theme: dark ? "dark" : "neutral" });
+await mermaid.run();
+</script>
+</body>
+</html>

@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mugloar Client Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column; each diagram, tree or table sits in its own scrollable panel. */
+:root {
+  --bg: #f6f7f4;
+  --panel: #ffffff;
+  --fg: #1d2421;
+  --muted: #5b6661;
+  --line: #d9ddd7;
+  --accent: #2f6b4f;
+  --accent-soft: #e3efe8;
+  --display: "Fraunces", Georgia, serif;
+  --body: "Source Sans 3", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #131816; --panel: #1b211e; --fg: #e4ebe7; --muted: #9aa7a0;
+    --line: #2e3833; --accent: #7fc4a0; --accent-soft: #22322a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #131816; --panel: #1b211e; --fg: #e4ebe7; --muted: #9aa7a0;
+  --line: #2e3833; --accent: #7fc4a0; --accent-soft: #22322a; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--fg); font: 16px/1.55 var(--body); margin: 0; }
+.wrap { max-width: 980px; margin: 0 auto; padding-inline: 16px; padding-block: 40px 64px; display: grid; gap: 40px; }
+header { display: grid; gap: 8px; }
+.eyebrow { font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+h1 { font: 600 clamp(28px, 5vw, 40px)/1.1 var(--display); margin: 0; text-wrap: balance; }
+h2 { font: 600 24px/1.2 var(--display); margin: 0; text-wrap: balance; }
+h3 { font: 600 15px/1.3 var(--body); margin: 0; }
+p { margin: 0; max-width: 68ch; }
+.lede { color: var(--muted); }
+section { display: grid; gap: 16px; min-width: 0; }
+nav.docs { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 15px; }
+nav.docs a { color: var(--accent); }
+nav.docs [aria-current] { color: var(--fg); font-weight: 600; text-decoration: none; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+.diagram { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; overflow-x: auto; min-width: 0; }
+.diagram pre { margin: 0; }
+.diagram pre.mermaid { display: flex; justify-content: center; }
+code, .mono { font-family: var(--mono); font-size: 13px; }
+code { background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
+.rules { margin: 0; padding-left: 22px; display: grid; gap: 6px; max-width: 72ch; }
+.rules li::marker { color: var(--accent); }
+.tiers table { border-collapse: collapse; width: 100%; font-size: 15px; }
+.tiers th, .tiers td { text-align: left; vertical-align: top; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); }
+.tiers th { font: 500 12px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.tiers tr:last-child td { border-bottom: 0; }
+.tiers .num { font-variant-numeric: tabular-nums; }
+.tree { font-family: var(--mono); font-size: 13px; line-height: 1.6; margin: 0; white-space: pre; }
+.note { border-left: 3px solid var(--accent); padding: 4px 0 4px 14px; color: var(--muted); font-size: 15px; max-width: 72ch; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <nav class="docs" aria-label="Project docs"><a aria-current="page">Frontend</a><a href="backend-architecture.html">Backend</a><a href="game-loop.html">Game loop</a><a href="README.md">README</a></nav>
+    <span class="eyebrow">frontend · Vue 3.5 · TypeScript · Pinia · Vite</span>
+    <h1>Mugloar game client architecture</h1>
+    <p class="lede">A browser client for playing Dragons of Mugloar yourself. It shows the jobs board with odds and recommendations, the shop, your stats, reputation and an activity log. There is no server of our own: the browser talks straight to the public API, and all game logic runs in the browser.</p>
+  </header>
+
+  <section>
+    <h2>Layers</h2>
+    <p>The code is layered by type, using the create-vue default folders plus one pure-logic layer, <code>game/</code>. Imports only go in the direction of the arrows. ESLint enforces this per folder, so a component that imports the store, or game logic that imports Vue, fails the lint.</p>
+    <div class="diagram">
+<pre class="mermaid">
+flowchart LR
+  router["router/&lt;br/&gt;route table"] --> views["views/&lt;br/&gt;screens"]
+  views --> stores["stores/&lt;br/&gt;Pinia game store"]
+  views --> components["components/&lt;br/&gt;props in, events out"]
+  views --> game["game/&lt;br/&gt;pure TypeScript"]
+  stores --> api["api/&lt;br/&gt;the only fetch caller"]
+  stores --> game
+  components --> game
+  game -. "import type only" .-> api
+  api -- HTTPS --> ext[("dragonsofmugloar.com&lt;br/&gt;/api/v2")]
+</pre>
+    </div>
+    <div class="diagram tiers">
+      <table>
+        <thead><tr><th>Layer</th><th>Folder</th><th>Holds</th><th>May not</th></tr></thead>
+        <tbody>
+          <tr><td>API</td><td><code>src/api/</code></td><td>The <code>fetch</code> wrapper, one function per endpoint, raw response types (DTOs), <code>ApiError</code>, the base URL.</td><td>Know about Vue, state or game rules.</td></tr>
+          <tr><td>Game logic</td><td><code>src/game/</code></td><td>Ad decoding, label odds and risk tiers, merging a turn into the stats, recommendations, shop rules, domain types.</td><td>Import Vue or Pinia. It is plain functions over plain data, so it is tested without mounting anything.</td></tr>
+          <tr><td>State</td><td><code>src/stores/</code></td><td>One Pinia store, <code>useGameStore</code>. The only caller of <code>api/</code> and the only place state changes.</td><td>Navigate. Views watch its status and change the route.</td></tr>
+          <tr><td>Screens</td><td><code>src/views/</code>, <code>App.vue</code></td><td>Route-level screens. They read the store, call its actions and navigate.</td><td>Import <code>api/</code>.</td></tr>
+          <tr><td>Presentational</td><td><code>src/components/</code></td><td>Job rows, shop items, stats bar, reputation, activity log, icons.</td><td>Import the store, the API, views or the router.</td></tr>
+          <tr><td>Routing</td><td><code>src/router/</code></td><td>The route table.</td><td>Import anything but views.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Folder structure</h2>
+    <div class="diagram">
+<pre class="tree">frontend/src/
+├── main.ts                  creates the app, loads fonts, mounts after the router is ready
+├── App.vue                  router outlet; credits footer (the game screen shows credits in its own grid)
+├── copy.ts                  every user-facing string, in one place
+├── api/
+│   ├── client.ts            request(), ApiError, one function per endpoint
+│   └── types.ts             DTOs exactly as the API sends them
+├── game/                    no Vue, no Pinia
+│   ├── decode.ts            base64 and ROT13 ads → domain Ad
+│   ├── risk.ts              label → measured win %, risk tier
+│   ├── recommendations.ts   job ranking and shop advice (port of the bot's tree v3.4)
+│   ├── job-cues.ts          gold tier icon, expiry urgency
+│   ├── shop.ts              item effect, affordability
+│   ├── apply-turn.ts        merges a turn response into the stats, with deltas
+│   └── types.ts             Ad, Stats, TurnRecord, Reputation …
+├── stores/game.ts           useGameStore: state, actions, the turn pipeline
+├── router/index.ts          /, /game/:gameId/ads, /shop, /over
+├── views/                   StartView, GameView (shell), AdsPanel, ShopPanel, GameOverView
+├── components/              JobRow, ShopItem, StatsBar, ReputationPanel, ActivityLog, GameIcon …
+├── styles/                  tokens.css, base.css, layout.css
+└── assets/icons/            game-icons.net SVGs (CC BY 3.0)</pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Talking to the API</h2>
+    <p>The browser calls <code>https://dragonsofmugloar.com/api/v2</code> directly; the API allows cross-origin requests, so there is no proxy and no backend of our own. No key or login is needed. Every request goes through one function in <code>api/client.ts</code>.</p>
+    <div class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+  participant V as View or component
+  participant S as stores/game.ts
+  participant G as game/
+  participant A as api/client.ts
+  participant M as Mugloar API
+  V->>S: solve(adId)
+  S->>S: pending = true, snapshot stats
+  S->>A: solveAd(gameId, adId)
+  A->>M: POST /:gameId/solve/:adId
+  M-->>A: JSON, or an HTML error page
+  A-->>S: SolveDto, or throws ApiError
+  S->>G: applyTurn(before, response)
+  G-->>S: new stats and deltas
+  S->>S: append a TurnRecord to the log
+  S->>A: getMessages(gameId)
+  A->>M: GET /:gameId/messages
+  M-->>A: ads
+  S->>G: decodeAd(each ad)
+  S-->>V: reactive state updates the screen
+</pre>
+    </div>
+    <div class="diagram tiers">
+      <table>
+        <thead><tr><th>Call</th><th>Endpoint</th><th>Takes a turn</th><th>When the client calls it</th></tr></thead>
+        <tbody>
+          <tr><td>Start</td><td><code>POST /game/start</code></td><td>no</td><td>"Start a new game"</td></tr>
+          <tr><td>Shop</td><td><code>GET /:gameId/shop</code></td><td>no</td><td>Once per game, and on the player's retry</td></tr>
+          <tr><td>Board</td><td><code>GET /:gameId/messages</code></td><td>no</td><td>On start or load, and after every turn</td></tr>
+          <tr><td>Solve</td><td><code>POST /:gameId/solve/:adId</code></td><td>yes</td><td>The player picks a job</td></tr>
+          <tr><td>Buy</td><td><code>POST /:gameId/shop/buy/:itemId</code></td><td>yes, even when it fails</td><td>The player buys an item</td></tr>
+          <tr><td>Reputation</td><td><code>POST /:gameId/investigate/reputation</code></td><td>yes</td><td>The player asks around</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul class="rules">
+      <li><strong>Raw in, decoded out.</strong> <code>api/</code> returns DTOs exactly as the API sends them. The store runs every ad through <code>game/decodeAd()</code> before storing it, so nothing past the store sees an encrypted ad.</li>
+      <li><strong>One error shape.</strong> Any failure becomes <code>ApiError</code> with kind <code>not-found</code>, <code>network</code> or <code>http</code>. Error bodies are never parsed, because the API answers errors with HTML. The store maps errors to state; components never catch.</li>
+      <li><strong>Only the board decides expiry.</strong> A 404 from <code>GET messages</code> means the game is gone, and the player returns to the start screen with a notice. A 404 from solve, buy or the shop only shows an error; the next board read decides.</li>
+      <li><strong>Retries.</strong> Only the board read retries on its own, after 2 s and then 5 s. Solve, buy and reputation are never retried, because a retry could take a second turn. While the board can't be refreshed, solving is blocked and a "Check the board again" button appears.</li>
+      <li><strong>One request at a time.</strong> While an action is pending, every action control is disabled. A buy you can't afford is disabled too, since a failed buy still costs a turn.</li>
+      <li><strong>Stale responses are dropped.</strong> Each action remembers its game id. If you start another game while a response is in flight, that response changes nothing.</li>
+      <li><strong>API text is untrusted.</strong> Ad text is rendered as text, never as HTML.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>State</h2>
+    <p><code>useGameStore</code> is the single owner of the game. State changes only inside its actions: <code>start</code>, <code>load</code>, <code>solve</code>, <code>buy</code>, <code>investigateReputation</code>, and the two retries <code>refreshMessages</code> and <code>refreshShop</code>.</p>
+    <div class="diagram tiers">
+      <table>
+        <thead><tr><th>State</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>gameId</code>, <code>status</code></td><td>The game, and one of idle, loading, playing, over, expired</td></tr>
+          <tr><td><code>stats</code></td><td>Lives, gold, level, score, turn. Each can be unknown: after a reload the API has no way to read them until the next turn.</td></tr>
+          <tr><td><code>board</code>, <code>boardStale</code></td><td>Decoded ads, and whether the last refresh failed</td></tr>
+          <tr><td><code>shop</code>, <code>reputation</code></td><td>Items for sale, and the latest reputation reading</td></tr>
+          <tr><td><code>log</code></td><td>One <code>TurnRecord</code> per turn, in memory for this game</td></tr>
+          <tr><td><code>purchases</code>, <code>stateEstimate</code></td><td>Buys per item and the estimated state reputation; they feed the recommendations</td></tr>
+          <tr><td><code>pending</code>, <code>error</code></td><td>The one-request guard, and the last error</td></tr>
+          <tr><td><code>rankedJobs</code>, <code>recommendedItem</code>, <code>shopHint</code></td><td>Computed from the state above with <code>game/</code> functions. Views read these; they never rank anything themselves.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Solve, buy and reputation share one pipeline: guard, snapshot, call, merge, log, game-over check, board refresh. The <a href="game-loop.html">game loop</a> doc walks through it.</p>
+  </section>
+
+  <section>
+    <h2>Screens</h2>
+    <div class="diagram tiers">
+      <table>
+        <thead><tr><th>Route</th><th>Shows</th></tr></thead>
+        <tbody>
+          <tr><td><code>/</code></td><td>Start screen, and the notice when a game expired</td></tr>
+          <tr><td><code>/game/:gameId/ads</code></td><td>Jobs board, best value first, with the recommended job marked. <code>/game/:gameId</code> redirects here.</td></tr>
+          <tr><td><code>/game/:gameId/shop</code></td><td>Shop shelves, cheapest first, with the recommended item marked</td></tr>
+          <tr><td><code>/game/:gameId/over</code></td><td>Game over and final score</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul class="rules">
+      <li><strong>The URL picks the game.</strong> <code>GameView</code> loads the game named in the URL once. Switching between jobs and shop never reloads it, and a link to a game opens that game.</li>
+      <li><strong>One shell.</strong> <code>GameView</code> renders the stats bar, reputation, the jobs/shop tabs and the activity log; the active panel renders in its <code>&lt;RouterView&gt;</code>.</li>
+      <li><strong>Layout.</strong> On desktop the page fits the window and only the panel and the log scroll. On phones the page scrolls, with the stats bar and the log pinned.</li>
+      <li><strong>Accessibility.</strong> Focus moves to the new heading on each route change, and back to the panel heading when a turn disables the control you used. The log is one live region, so screen readers hear each result once. Icons stay visible in forced-colors mode. Sizes are in rem.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Recommendations</h2>
+    <p>The hints come from the same decision tree the bot plays with, ported to TypeScript in <code>game/recommendations.ts</code>. A job's value is win % × reward − loss % × (75 + best safe reward). Bait ads are flagged as traps, steals are flagged when they would sink your standing with the state, and the shop tab says "Low on lives" or "Level up" when the tree would buy. Nothing is hidden or disabled; the player always decides. The rules and their evidence are in the <a href="backend-architecture.html">backend</a> doc.</p>
+  </section>
+
+  <section>
+    <h2>Quality gates</h2>
+    <ul class="rules">
+      <li><strong>Tests:</strong> Vitest with jsdom covers the game logic, the store pipeline and the components. Tests stub <code>fetch</code> and never call the live API.</li>
+      <li><strong>Types:</strong> <code>vue-tsc</code> runs as part of <code>pnpm build</code>.</li>
+      <li><strong>Lint:</strong> oxlint (correctness rules, plus braces on every <code>if</code>) and ESLint (Vue rules and the layer boundaries above).</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Where to change what</h2>
+    <div class="diagram tiers">
+      <table>
+        <thead><tr><th>To change</th><th>Edit</th></tr></thead>
+        <tbody>
+          <tr><td>Endpoints, error mapping</td><td><code>api/client.ts</code></td></tr>
+          <tr><td>Win rates, risk tiers</td><td><code>game/risk.ts</code></td></tr>
+          <tr><td>Job ranking, shop advice</td><td><code>game/recommendations.ts</code></td></tr>
+          <tr><td>Turn order, retries, expiry</td><td><code>stores/game.ts</code></td></tr>
+          <tr><td>Any text on screen</td><td><code>copy.ts</code></td></tr>
+          <tr><td>Colours, spacing, layout</td><td><code>styles/tokens.css</code>, <code>styles/layout.css</code></td></tr>
+          <tr><td>Run it: <code>docker compose up --build web</code> → <span class="mono">localhost:8080</span> · or <code>pnpm dev</code></td><td><code>frontend/</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+mermaid.initialize({ startOnLoad: false, theme: dark ? "dark" : "neutral" });
+await mermaid.run();
+</script>
+</body>
+</html>
