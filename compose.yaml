@@ -9,5 +9,8 @@ services:
 
   web:
     build: ./frontend
+    # WEB_PORT=3000 docker compose up web serves on another port.
     ports:
-      - "8080:80"
+      - "${WEB_PORT:-8080}:80"
+    environment:
+      WEB_PORT: ${WEB_PORT:-8080}

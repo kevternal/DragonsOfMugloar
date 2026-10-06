@@ -82,7 +82,7 @@ From the repository root:
 docker compose up --build web
 ```
 
-Opens on http://localhost:8080. The image builds the app and serves it with nginx. Stop it with `docker compose down`.
+The image builds the app and serves it with nginx. On start it prints `Dragons of Mugloar is running on http://localhost:8080`. Use `WEB_PORT=3000 docker compose up --build web` for another port, and `docker compose down` to stop it.
 
 ### Without Docker (Node and pnpm)
 

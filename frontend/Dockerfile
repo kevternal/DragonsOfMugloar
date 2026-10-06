@@ -11,5 +11,6 @@ RUN pnpm build
 # Runtime stage: nginx serves the static build. The browser calls the Mugloar API directly.
 FROM nginx:1.29-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --chmod=755 print-url.sh /docker-entrypoint.d/99-print-url.sh
 COPY --from=build /src/dist /usr/share/nginx/html
 EXPOSE 80
